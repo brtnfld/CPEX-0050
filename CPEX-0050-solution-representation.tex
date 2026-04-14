@@ -267,8 +267,9 @@ The proposal introduces:
 \begin{enumerate}[leftmargin=2em]
 \item A new \texttt{SolutionRepresentation\_t} enumeration with values
   covering the common representation types.
-\item A new optional child node of \texttt{FlowSolution\_t} (and
-  \texttt{DiscreteData\_t}) recording the solution representation.
+\item A new optional child node of \texttt{FlowSolution\_t},
+  \texttt{DiscreteData\_t}, and \texttt{ZoneSubRegion\_t} recording
+  the solution representation.
 \item Mid-Level Library functions to read and write the representation.
 \item Fortran bindings.
 \end{enumerate}
@@ -280,8 +281,8 @@ The proposal introduces:
 typedef enum {
   CGNS_ENUMV( SolutionRepresentationNull )        = CG_Null,
   CGNS_ENUMV( SolutionRepresentationUserDefined )  = CG_UserDefined,
-  CGNS_ENUMV( ContinuousFieldRepresentation )      = 2,
-  CGNS_ENUMV( DiscontinuousFieldRepresentation )   = 3
+  CGNS_ENUMV( Continuous )                          = 2,
+  CGNS_ENUMV( Discontinuous )                       = 3
 } CGNS_ENUMT( SolutionRepresentation_t );
 
 #define NofValidSolutionRepresentation 4
@@ -300,14 +301,14 @@ The enumeration values are:
 \item[\texttt{SolutionRepresentationUserDefined}] Application-defined
   representation not covered by the standard values.
 
-\item[\texttt{ContinuousFieldRepresentation}] The solution field is
+\item[\texttt{Continuous}] The solution field is
   globally $C^0$-continuous (or higher) across element interfaces.
   DOFs at shared mesh entities (vertices, edges, faces) are shared
   between adjacent elements.  Typical of: Continuous Galerkin FEM,
   $C^0$ spectral element methods, isogeometric analysis with
   $C^0$~junctions.
 
-\item[\texttt{DiscontinuousFieldRepresentation}] The solution field is
+\item[\texttt{Discontinuous}] The solution field is
   element-local with no continuity enforced across element interfaces
   ($C^{-1}$).  Each element owns independent DOFs, including at shared
   geometric locations.  Typical of: Discontinuous Galerkin methods,
@@ -336,8 +337,8 @@ continuous or discontinuous categories.
 
 For HDG methods, the recommended approach is to use separate
 \texttt{FlowSolution\_t} nodes: one with
-\texttt{DiscontinuousFieldRepresentation} for the volume DOFs and one
-with \texttt{ContinuousFieldRepresentation} for the trace (skeleton)
+\texttt{Discontinuous} for the volume DOFs and one
+with \texttt{Continuous} for the trace (skeleton)
 DOFs.
 
 \subsection{SIDS Node Definition}
@@ -384,6 +385,23 @@ The same optional child node is added to \texttt{DiscreteData\_t}
 
 \begin{sidsnode}{DiscreteData\_t (amended, SIDS Section 12.4)}
 DiscreteData\_t< int CellDimension, int IndexDimension, \\
+\qquad\qquad\quad int VertexSize[IndexDimension], \\
+\qquad\qquad\quad int CellSize[IndexDimension] > := \\
+\quad \{ \\
+\quad ... (existing children unchanged) ... \\
+\\
++ \quad SolutionRepresentation\_t SolutionRepresentation ; \qquad\quad\;\; (o) \\
+\quad \}
+\end{sidsnode}
+
+The optional child node is also added to \texttt{ZoneSubRegion\_t}
+(SIDS Section~9.4).  \texttt{ZoneSubRegion\_t} holds
+\texttt{DataArray\_t} nodes for localized solutions, boundary fluxes,
+or fields on sub-regions where the continuous/discontinuous distinction
+applies equally:
+
+\begin{sidsnode}{ZoneSubRegion\_t (amended, SIDS Section 9.4)}
+ZoneSubRegion\_t< int CellDimension, int IndexDimension, \\
 \qquad\qquad\quad int VertexSize[IndexDimension], \\
 \qquad\qquad\quad int CellSize[IndexDimension] > := \\
 \quad \{ \\
@@ -468,6 +486,24 @@ int cg_discrete_representation_write(
 int cg_discrete_representation_read(
     int fn, int B, int Z, int D,
     CGNS_ENUMT(SolutionRepresentation_t) *type);
+
+/*
+ * Write/read the solution representation for a ZoneSubRegion_t node.
+ * Same semantics as the FlowSolution_t counterparts.
+ *
+ * fn   - file number
+ * B    - base index
+ * Z    - zone index
+ * SR   - sub-region index
+ * type - SolutionRepresentation_t value
+ */
+int cg_subreg_representation_write(
+    int fn, int B, int Z, int SR,
+    CGNS_ENUMT(SolutionRepresentation_t) type);
+
+int cg_subreg_representation_read(
+    int fn, int B, int Z, int SR,
+    CGNS_ENUMT(SolutionRepresentation_t) *type);
 \end{lstlisting}
 
 \textbf{Behavior:}
@@ -475,7 +511,8 @@ int cg_discrete_representation_read(
 \begin{itemize}[leftmargin=2em]
 \item The \texttt{\_write} functions create (or overwrite)
   the \texttt{SolutionRepresentation} child node under the specified
-  \texttt{FlowSolution\_t} or \texttt{DiscreteData\_t} node.  Writing
+  \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t}, or
+  \texttt{ZoneSubRegion\_t} node.  Writing
   \texttt{SolutionRepresentationNull} removes the node if present.
 
 \item The \texttt{\_read} functions return the value stored
@@ -508,12 +545,24 @@ subroutine cg_discrete_representation_read_f( &
     fn, B, Z, D, type, ier)
   integer, intent(in) :: fn, B, Z, D
   integer, intent(out) :: type, ier
+
+! ZoneSubRegion_t
+subroutine cg_subreg_representation_write_f( &
+    fn, B, Z, SR, type, ier)
+  integer, intent(in) :: fn, B, Z, SR, type
+  integer, intent(out) :: ier
+
+subroutine cg_subreg_representation_read_f( &
+    fn, B, Z, SR, type, ier)
+  integer, intent(in) :: fn, B, Z, SR
+  integer, intent(out) :: type, ier
 \end{lstlisting}
 
 \subsection{Internal Data Structure Changes}
 
-The \texttt{cgns\_sol} structure (\texttt{FlowSolution\_t}) and
-\texttt{cgns\_discrete} structure (\texttt{DiscreteData\_t}) in
+The \texttt{cgns\_sol} structure (\texttt{FlowSolution\_t}),
+\texttt{cgns\_discrete} structure (\texttt{DiscreteData\_t}), and
+\texttt{cgns\_subreg} structure (\texttt{ZoneSubRegion\_t}) in
 \texttt{cgns\_header.h} each gain one field:
 
 \begin{lstlisting}[language=C]
@@ -530,10 +579,94 @@ typedef struct {            /* DiscreteData_t node */
     /* CPEX 0050 */
     CGNS_ENUMT(SolutionRepresentation_t) representation;
 } cgns_discrete;
+
+typedef struct {            /* ZoneSubRegion_t node */
+    /* ... existing fields ... */
+
+    /* CPEX 0050 */
+    CGNS_ENUMT(SolutionRepresentation_t) representation;
+} cgns_subreg;
 \end{lstlisting}
 
 The field defaults to \texttt{SolutionRepresentationNull} (value~0),
 which is the zero-initialization value and the ``not specified'' state.
+
+\subsection{Internal Lookup Table Initialization}
+
+The string-to-enum mapping table must be initialized in
+\texttt{cgns\_internal.c} so that \texttt{cgi\_enum\_val()} can
+resolve the C1 character data stored in CGNS files:
+
+\begin{lstlisting}[language=C]
+const char *SolutionRepresentationName[NofValidSolutionRepresentation] = {
+    "Null",
+    "UserDefined",
+    "Continuous",
+    "Discontinuous"
+};
+\end{lstlisting}
+
+\subsection{MLL Implementation Requirements}
+\label{sec:mll-impl}
+
+\subsubsection{Internal Tree Parser Update (\texttt{cgns\_internal.c})}
+
+When a CGNS file is opened, the MLL tree parser
+(\texttt{cgi\_read\_node}) crawls the HDF5/CGIO tree and populates
+internal C structures.  The parser must be updated to recognize child
+nodes with label \texttt{SolutionRepresentation\_t} during the
+traversal of \texttt{FlowSolution\_t} (\texttt{cgi\_read\_sol}),
+\texttt{DiscreteData\_t} (\texttt{cgi\_read\_discrete}), and
+\texttt{ZoneSubRegion\_t} (\texttt{cgi\_read\_subreg}).
+
+The required behavior is:
+
+\begin{enumerate}[leftmargin=2em]
+\item During memory allocation of \texttt{cgns\_sol},
+  \texttt{cgns\_discrete}, and \texttt{cgns\_subreg}, the
+  \texttt{representation} field is zero-initialized, which corresponds
+  to \texttt{SolutionRepresentationNull}.
+\item During the child-node traversal, if a child with label
+  \texttt{"SolutionRepresentation\_t"} is found, read its C1 string
+  data and map it to the enum value via
+  \texttt{cgi\_enum\_val("SolutionRepresentation\_t", string\_data,
+  \&enum\_val)}.  Store the result in the struct's
+  \texttt{representation} field.
+\item If no such child node exists, the field retains its default
+  \texttt{SolutionRepresentationNull} value.
+\end{enumerate}
+
+This follows the existing pattern used for \texttt{GridLocation\_t}
+parsing in \texttt{cgi\_read\_sol}.
+
+\subsubsection{Read Function Error Handling}
+
+The \texttt{\_read} functions (e.g.,
+\texttt{cg\_sol\_representation\_read}) return the cached struct field
+rather than performing a fresh HDF5 read.  Because the internal tree
+parser already handles the absent-node case by leaving the field at
+\texttt{SolutionRepresentationNull}, the read function simply returns
+the struct value and \texttt{CG\_OK}:
+
+\begin{lstlisting}[language=C]
+int cg_sol_representation_read(int fn, int B, int Z, int S,
+                               CGNS_ENUMT(SolutionRepresentation_t) *type) {
+    cgns_sol *sol = cgi_get_sol(fn, B, Z, S);
+    if (sol == NULL) return CG_ERROR;
+
+    *type = sol->representation;
+
+    return CG_OK;
+}
+\end{lstlisting}
+
+This architecture avoids the need to intercept
+\texttt{CG\_NODE\_NOT\_FOUND} errors at read time---the absent-node
+case is handled once during file open, and all subsequent reads are
+served from the in-memory cache.  Legacy code that iterates over
+solutions and queries the representation will always receive
+\texttt{CG\_OK} with \texttt{SolutionRepresentationNull} for files
+that predate this CPEX.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Interaction with CPEX 0045 (Higher-Order Elements)}
@@ -621,7 +754,7 @@ cg_sol_write(fn, B, Z, "FlowSolution", CGNS_ENUMV(Vertex), &S);
 
 /* Mark as continuous (CG FEM) */
 cg_sol_representation_write(fn, B, Z, S,
-    CGNS_ENUMV(ContinuousFieldRepresentation));
+    CGNS_ENUMV(Continuous));
 
 /* Write solution data (one value per mesh vertex, shared) */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
@@ -641,7 +774,7 @@ cg_sol_interpolation_order_write(fn, B, Z, S, 3, 0);
 
 /* Mark as discontinuous */
 cg_sol_representation_write(fn, B, Z, S,
-    CGNS_ENUMV(DiscontinuousFieldRepresentation));
+    CGNS_ENUMV(Discontinuous));
 
 /* Write element-local DOFs */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
@@ -655,11 +788,11 @@ CGNS_ENUMT(SolutionRepresentation_t) repr;
 cg_sol_representation_read(fn, B, Z, S, &repr);
 
 switch (repr) {
-case CGNS_ENUMV(ContinuousFieldRepresentation):
+case CGNS_ENUMV(Continuous):
     /* Shared DOFs: interpolate using global mesh connectivity */
     visualize_continuous(fn, B, Z, S);
     break;
-case CGNS_ENUMV(DiscontinuousFieldRepresentation):
+case CGNS_ENUMV(Discontinuous):
     /* Element-local DOFs: render per-element, preserve jumps */
     visualize_discontinuous(fn, B, Z, S);
     break;
@@ -678,14 +811,14 @@ int S_vol;
 cg_sol_write(fn, B, Z, "VolumeSolution",
     CGNS_ENUMV(InterpolationPoints), &S_vol);
 cg_sol_representation_write(fn, B, Z, S_vol,
-    CGNS_ENUMV(DiscontinuousFieldRepresentation));
+    CGNS_ENUMV(Discontinuous));
 
 /* Trace DOFs on element faces (continuous on skeleton) */
 int S_trace;
 cg_sol_write(fn, B, Z, "TraceSolution",
     CGNS_ENUMV(FaceCenter), &S_trace);
 cg_sol_representation_write(fn, B, Z, S_trace,
-    CGNS_ENUMV(ContinuousFieldRepresentation));
+    CGNS_ENUMV(Continuous));
 \end{lstlisting}
 
 \subsection{Example 5: Fortran Usage}
@@ -696,11 +829,11 @@ integer :: S, ier, repr
 ! Write a continuous solution
 call cg_sol_write_f(fn, B, Z, 'FlowSolution', Vertex, S, ier)
 call cg_sol_representation_write_f(fn, B, Z, S, &
-    ContinuousFieldRepresentation, ier)
+    Continuous, ier)
 
 ! Read representation
 call cg_sol_representation_read_f(fn, B, Z, S, repr, ier)
-if (repr == DiscontinuousFieldRepresentation) then
+if (repr == Discontinuous) then
     ! Element-local interpolation
 end if
 \end{lstlisting}
@@ -715,7 +848,7 @@ cg_sol_write(fn, B, Z, "FlowSolution",
 
 /* Explicitly mark as discontinuous */
 cg_sol_representation_write(fn, B, Z, S,
-    CGNS_ENUMV(DiscontinuousFieldRepresentation));
+    CGNS_ENUMV(Discontinuous));
 \end{lstlisting}
 
 This example demonstrates that the representation metadata is useful
@@ -742,6 +875,10 @@ to distinguish between solution types programmatically.
 
 \item \textbf{DiscreteData\_t amendment:} The
   \texttt{DiscreteData\_t} node definition (SIDS Section~12.4) is
+  similarly amended.
+
+\item \textbf{ZoneSubRegion\_t amendment:} The
+  \texttt{ZoneSubRegion\_t} node definition (SIDS Section~9.4) is
   similarly amended.
 
 \item No existing SIDS node types, enumerations, or conventions are
@@ -787,23 +924,11 @@ The node is written only when the representation is not
 
 \begin{enumerate}[leftmargin=2em]
 
-\item \textbf{Enum naming convention.}
-  The proposed enumeration values use descriptive names
-  (\texttt{ContinuousFieldRepresentation},
-  \texttt{DiscontinuousFieldRepresentation}).  Shorter alternatives
-  such as \texttt{Continuous}/\texttt{Discontinuous} or
-  \texttt{CG\_Representation}/\texttt{DG\_Representation} could be
-  considered.  The longer names were chosen to avoid ambiguity with
-  the ``CG'' abbreviation (which collides with the CGNS library's
-  \texttt{CG\_} namespace prefix) and to be self-documenting in the
-  SIDS string representation.
-
-\item \textbf{Scope: \texttt{FlowSolution\_t} only, or broader?}
+\item \textbf{Scope: \texttt{BCData\_t}?}
   Should \texttt{SolutionRepresentation\_t} also be permitted on
-  other node types such as \texttt{BCData\_t} or
-  \texttt{ZoneSubRegion\_t}?  The initial proposal limits scope to
-  \texttt{FlowSolution\_t} and \texttt{DiscreteData\_t} for
-  simplicity, but the committee may wish to extend it.
+  \texttt{BCData\_t}?  The current proposal covers
+  \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t}, and
+  \texttt{ZoneSubRegion\_t}; the committee may wish to extend further.
 
 \item \textbf{Per-field vs.\ per-solution-node granularity.}
   The current proposal applies the representation at the
@@ -816,8 +941,8 @@ The node is written only when the representation is not
 
 \item \textbf{Interaction with \texttt{GridLocation\_t = CellCenter}.}
   A \texttt{CellCenter} solution is inherently element-local.  Should
-  the library enforce consistency (reject
-  \texttt{ContinuousFieldRepresentation} with \texttt{CellCenter}), or
+  the library enforce consistency (reject \texttt{Continuous}
+  with \texttt{CellCenter}), or
   allow the user to set any combination?  The proposal currently does
   not enforce consistency, leaving validation to application-level
   tools.
@@ -834,17 +959,21 @@ The node is written only when the representation is not
 \textbf{Symbol} & \textbf{Description} \\
 \midrule
 \endhead
-\texttt{SolutionRepresentation\_t} & New enumeration type: \texttt{Null}, \texttt{UserDefined}, \texttt{ContinuousFieldRepresentation}, \texttt{DiscontinuousFieldRepresentation}. \\
+\texttt{SolutionRepresentation\_t} & New enumeration type: \texttt{Null}, \texttt{UserDefined}, \texttt{Continuous}, \texttt{Discontinuous}. \\
 \texttt{SolutionRepresentationName} & String table for the enumeration values. \\
 \texttt{NofValidSolutionRepresentation} & Count of valid enumeration values (4). \\
 \texttt{cg\_sol\_representation\_write} & C: write solution representation for a \texttt{FlowSolution\_t} node. \\
 \texttt{cg\_sol\_representation\_read} & C: read solution representation for a \texttt{FlowSolution\_t} node. \\
 \texttt{cg\_discrete\_representation\_write} & C: write solution representation for a \texttt{DiscreteData\_t} node. \\
 \texttt{cg\_discrete\_representation\_read} & C: read solution representation for a \texttt{DiscreteData\_t} node. \\
+\texttt{cg\_subreg\_representation\_write} & C: write solution representation for a \texttt{ZoneSubRegion\_t} node. \\
+\texttt{cg\_subreg\_representation\_read} & C: read solution representation for a \texttt{ZoneSubRegion\_t} node. \\
 \texttt{cg\_sol\_representation\_write\_f} & Fortran: write solution representation (\texttt{FlowSolution\_t}). \\
 \texttt{cg\_sol\_representation\_read\_f} & Fortran: read solution representation (\texttt{FlowSolution\_t}). \\
 \texttt{cg\_discrete\_representation\_write\_f} & Fortran: write solution representation (\texttt{DiscreteData\_t}). \\
 \texttt{cg\_discrete\_representation\_read\_f} & Fortran: read solution representation (\texttt{DiscreteData\_t}). \\
+\texttt{cg\_subreg\_representation\_write\_f} & Fortran: write solution representation (\texttt{ZoneSubRegion\_t}). \\
+\texttt{cg\_subreg\_representation\_read\_f} & Fortran: read solution representation (\texttt{ZoneSubRegion\_t}). \\
 \bottomrule
 \end{longtable}
 \end{center}
