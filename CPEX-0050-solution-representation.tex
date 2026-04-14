@@ -81,7 +81,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small\color{cgnsblue} CPEX 0050 --- Solution Representation Type}
-\fancyhead[R]{\small\color{cgnsblue} Version 0.1}
+\fancyhead[R]{\small\color{cgnsblue} Version 0.2}
 \fancyfoot[C]{\small\color{cgnsblue}\thepage}
 \renewcommand{\headrulewidth}{0.5pt}
 \renewcommand{\headrule}{\hbox to\headwidth{\color{cgnsgold}\leaders\hrule height\headrulewidth\hfill}}
@@ -102,7 +102,7 @@
   {\LARGE\bfseries\color{cgnsblue} CGNS Proposal for Extension 0050}\\[0.6em]
   {\Large\color{cgnsteal} Solution Representation Type}\\[0.4em]
   {\color{cgnsgold}\rule{0.4\textwidth}{0.8pt}}\\[0.6em]
-  {\large Version 0.1}\\[0.6em]
+  {\large Version 0.2}\\[0.6em]
   \today
 \end{center}
 
@@ -346,7 +346,8 @@ DOFs.
 
 The representation is stored as a new optional child node of
 \texttt{FlowSolution\_t}.  The amended SIDS definition adds one line
-(shown with the \texttt{+} marker):
+(shown with the \texttt{+} marker).  The definition below includes the
+\texttt{SolutionInterpolation\_t} child introduced by CPEX~0045:
 
 \begin{sidsnode}{FlowSolution\_t (amended, SIDS Section 7.7)}
 FlowSolution\_t< int CellDimension, int IndexDimension, \\
@@ -368,6 +369,8 @@ FlowSolution\_t< int CellDimension, int IndexDimension, \\
 \quad DataClass\_t DataClass ; \qquad\qquad\qquad\qquad\qquad\qquad\quad\; (o) \\
 \\
 \quad DimensionalUnits\_t DimensionalUnits ; \qquad\qquad\qquad\quad\;\;\; (o) \\
+\\
+\quad SolutionInterpolation\_t SolutionInterpolation ; \qquad\quad\;\;\;\; (o) \quad\textit{(CPEX 0045)} \\
 \\
 + \quad SolutionRepresentation\_t SolutionRepresentation ; \qquad\quad\;\; (o) \\
 \\
@@ -563,7 +566,7 @@ subroutine cg_subreg_representation_read_f( &
 The \texttt{cgns\_sol} structure (\texttt{FlowSolution\_t}),
 \texttt{cgns\_discrete} structure (\texttt{DiscreteData\_t}), and
 \texttt{cgns\_subreg} structure (\texttt{ZoneSubRegion\_t}) in
-\texttt{cgns\_header.h} each gain one field:
+\texttt{cgns\_header.h} each gain two fields:
 
 \begin{lstlisting}[language=C]
 typedef struct {            /* FlowSolution_t node */
@@ -571,6 +574,7 @@ typedef struct {            /* FlowSolution_t node */
 
     /* CPEX 0050 */
     CGNS_ENUMT(SolutionRepresentation_t) representation;
+    double representation_id;   /* CGIO node id for overwrite/delete */
 } cgns_sol;
 
 typedef struct {            /* DiscreteData_t node */
@@ -578,6 +582,7 @@ typedef struct {            /* DiscreteData_t node */
 
     /* CPEX 0050 */
     CGNS_ENUMT(SolutionRepresentation_t) representation;
+    double representation_id;
 } cgns_discrete;
 
 typedef struct {            /* ZoneSubRegion_t node */
@@ -585,11 +590,16 @@ typedef struct {            /* ZoneSubRegion_t node */
 
     /* CPEX 0050 */
     CGNS_ENUMT(SolutionRepresentation_t) representation;
+    double representation_id;
 } cgns_subreg;
 \end{lstlisting}
 
-The field defaults to \texttt{SolutionRepresentationNull} (value~0),
-which is the zero-initialization value and the ``not specified'' state.
+The \texttt{representation} field defaults to
+\texttt{SolutionRepresentationNull} (value~0), which is the
+zero-initialization value and the ``not specified'' state.  The
+\texttt{representation\_id} field stores the CGIO node identifier so
+that the write function can overwrite or delete the child node; it
+defaults to~0 (no node).
 
 \subsection{Internal Lookup Table Initialization}
 
@@ -651,7 +661,15 @@ the struct value and \texttt{CG\_OK}:
 \begin{lstlisting}[language=C]
 int cg_sol_representation_read(int fn, int B, int Z, int S,
                                CGNS_ENUMT(SolutionRepresentation_t) *type) {
-    cgns_sol *sol = cgi_get_sol(fn, B, Z, S);
+    cgns_sol *sol;
+
+    cg = cgi_get_file(fn);
+    if (cg == 0) return CG_ERROR;
+
+    if (cgi_check_mode(cg->filename, cg->mode, CG_MODE_READ))
+        return CG_ERROR;
+
+    sol = cgi_get_sol(cg, B, Z, S);
     if (sol == NULL) return CG_ERROR;
 
     *type = sol->representation;
@@ -667,6 +685,75 @@ served from the in-memory cache.  Legacy code that iterates over
 solutions and queries the representation will always receive
 \texttt{CG\_OK} with \texttt{SolutionRepresentationNull} for files
 that predate this CPEX.
+
+\subsubsection{Write Function Implementation}
+
+The \texttt{\_write} functions create (or overwrite) the
+\texttt{SolutionRepresentation} child node.  Writing
+\texttt{SolutionRepresentationNull} removes the node if present,
+restoring the ``unspecified'' state.  The reference implementation for
+\texttt{FlowSolution\_t} is shown below; the
+\texttt{DiscreteData\_t} and \texttt{ZoneSubRegion\_t} variants are
+analogous (substituting the appropriate internal structure accessor).
+
+\begin{lstlisting}[language=C]
+int cg_sol_representation_write(int fn, int B, int Z, int S,
+                                CGNS_ENUMT(SolutionRepresentation_t) type) {
+    cgns_sol *sol;
+    cgsize_t length;
+    double posit_id;
+
+    cg = cgi_get_file(fn);
+    if (cg == 0) return CG_ERROR;
+
+    if (cgi_check_mode(cg->filename, cg->mode, CG_MODE_WRITE))
+        return CG_ERROR;
+
+    sol = cgi_get_sol(cg, B, Z, S);
+    if (sol == NULL) return CG_ERROR;
+
+    /* Validate enum value */
+    if (type < 0 || type >= NofValidSolutionRepresentation) {
+        cgi_error("Invalid SolutionRepresentation value: %d", type);
+        return CG_ERROR;
+    }
+
+    /* Delete existing node if writing Null */
+    if (type == CGNS_ENUMV(SolutionRepresentationNull)) {
+        if (sol->representation !=
+                CGNS_ENUMV(SolutionRepresentationNull)) {
+            if (cgi_delete_node(sol->id,
+                    sol->representation_id))
+                return CG_ERROR;
+            sol->representation =
+                CGNS_ENUMV(SolutionRepresentationNull);
+            sol->representation_id = 0;
+        }
+        return CG_OK;
+    }
+
+    /* Create or overwrite the child node */
+    length = (cgsize_t)strlen(
+        SolutionRepresentationName[type]);
+    if (cgi_new_node(sol->id, "SolutionRepresentation",
+            "SolutionRepresentation_t", &posit_id,
+            "C1", 1, &length,
+            (void *)SolutionRepresentationName[type]))
+        return CG_ERROR;
+
+    sol->representation = type;
+    sol->representation_id = posit_id;
+    return CG_OK;
+}
+\end{lstlisting}
+
+\textbf{Note:} The \texttt{representation\_id} field (a \texttt{double}
+storing the CGIO node identifier) must be added to the internal
+structures alongside the \texttt{representation} field so that the
+node can be located for overwrite or deletion.  This follows the
+pattern used by other optional child nodes in the MLL (e.g.,
+\texttt{GridLocation} tracking via \texttt{location\_id} fields in
+some internal paths).
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Interaction with CPEX 0045 (Higher-Order Elements)}
@@ -713,6 +800,21 @@ InterpolationPoints}, the recommended practice is:
 
 For lower-order solutions using \texttt{GridLocation\_t = Vertex} or
 \texttt{CellCenter}, this CPEX can be used independently of CPEX~0045.
+
+\textbf{Data size convention for discontinuous solutions.}  When
+\texttt{SolutionRepresentation\_t = Discontinuous} and the solution
+data is element-local, the \texttt{GridLocation\_t} must be set to
+\texttt{InterpolationPoints} (CPEX~0045) with appropriate
+\texttt{SolutionInterpolation\_t} metadata, or a
+\texttt{PointList}/\texttt{PointRange} must be used to index the
+element-local DOFs.  Using \texttt{GridLocation\_t = Vertex} with
+\texttt{Discontinuous} and no \texttt{PointList} is not valid, because
+the SIDS \texttt{DataSize} formula for \texttt{Vertex} assumes
+shared-vertex semantics ($\texttt{DataSize} = \texttt{VertexSize}$)
+and cannot represent the element-local duplication inherent in a
+discontinuous field.  \texttt{GridLocation\_t = CellCenter} with
+\texttt{Discontinuous} remains valid since cell-centered data already
+has one value per element with no shared-entity ambiguity.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Backward Compatibility}
@@ -919,33 +1021,62 @@ The node is written only when the representation is not
 \texttt{GridLocation} node defaults to \texttt{Vertex}.
 
 %% ═════════════════════════════════════════════════════════════════════════
-\section{Open Questions}
+\section{Design Decisions}
 %% ═════════════════════════════════════════════════════════════════════════
+
+The following design questions were considered during the development
+of this proposal.  Each is resolved below with rationale grounded in
+existing CGNS conventions and SIDS precedent.
 
 \begin{enumerate}[leftmargin=2em]
 
-\item \textbf{Scope: \texttt{BCData\_t}?}
-  Should \texttt{SolutionRepresentation\_t} also be permitted on
-  \texttt{BCData\_t}?  The current proposal covers
-  \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t}, and
-  \texttt{ZoneSubRegion\_t}; the committee may wish to extend further.
+\item \textbf{Scope: \texttt{BCData\_t} is excluded.}
+  \texttt{SolutionRepresentation\_t} is \emph{not} added to
+  \texttt{BCData\_t}.  Boundary condition data arrays in
+  \texttt{BCData\_t} are sized by the associated
+  \texttt{PointList}/\texttt{PointRange} and \texttt{GridLocation\_t},
+  which already determine the data layout unambiguously.  In DG
+  methods, boundary conditions are typically applied weakly through
+  numerical fluxes; the element-local nature of the boundary data
+  follows from the solution representation on the parent
+  \texttt{FlowSolution\_t} node.  Adding
+  \texttt{SolutionRepresentation\_t} to \texttt{BCData\_t} would be
+  redundant and would introduce a potential inconsistency if the BC
+  representation differs from the solution it constrains.  Should a
+  future use case require per-BC representation metadata (e.g.,
+  coupling frameworks imposing boundary data in a different
+  representation than the interior), it can be proposed as a
+  separate, narrowly scoped CPEX without affecting this proposal.
 
-\item \textbf{Per-field vs.\ per-solution-node granularity.}
-  The current proposal applies the representation at the
-  \texttt{FlowSolution\_t} level, meaning all fields within a solution
-  node share the same representation.  An alternative would allow
-  per-\texttt{DataArray\_t} representation, at the cost of more
-  complexity.  Per-solution-node granularity is believed to be
-  sufficient: solvers that mix representations can use separate
-  \texttt{FlowSolution\_t} nodes.
+\item \textbf{Per-solution-node granularity (not per-field).}
+  The representation applies at the \texttt{FlowSolution\_t} level,
+  meaning all \texttt{DataArray\_t} children share the same
+  representation.  This follows the precedent set by
+  \texttt{GridLocation\_t}, which is likewise a per-solution-node
+  property: all fields within a \texttt{FlowSolution\_t} node share
+  the same grid location.  Per-\texttt{DataArray\_t} granularity was
+  rejected because it would add significant API and metadata
+  complexity with no demonstrated need.  Solvers that genuinely mix
+  representations within a single zone (e.g., HDG methods with
+  continuous traces and discontinuous volumes) should use separate
+  \texttt{FlowSolution\_t} nodes, exactly as they would use separate
+  nodes for fields at different \texttt{GridLocation\_t} values.
 
-\item \textbf{Interaction with \texttt{GridLocation\_t = CellCenter}.}
-  A \texttt{CellCenter} solution is inherently element-local.  Should
-  the library enforce consistency (reject \texttt{Continuous}
-  with \texttt{CellCenter}), or
-  allow the user to set any combination?  The proposal currently does
-  not enforce consistency, leaving validation to application-level
-  tools.
+\item \textbf{\texttt{CellCenter} + \texttt{Continuous}: permitted
+  but semantically inconsistent.}
+  The MLL does \emph{not} enforce consistency between
+  \texttt{SolutionRepresentation\_t} and \texttt{GridLocation\_t}.
+  A \texttt{CellCenter} solution is inherently element-local, making
+  \texttt{Continuous} semantically contradictory, but the library
+  shall not reject such combinations.  This follows the established
+  CGNS convention of being permissive in what is accepted: the
+  standard documents correct usage; validation is delegated to
+  application-level tools such as \texttt{cgnscheck}.
+
+  \textbf{Convention:} \texttt{SolutionRepresentation\_t = Continuous}
+  with \texttt{GridLocation\_t = CellCenter} should not be used.
+  \texttt{cgnscheck} should issue a warning when this combination is
+  encountered.
 
 \end{enumerate}
 
