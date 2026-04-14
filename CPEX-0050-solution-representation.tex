@@ -317,31 +317,42 @@ The enumeration values are:
   finite volume methods, $C^{-1}$ spectral element methods.
 \end{description}
 
-\subsubsection{Design Alternative: Additional Continuity Classes}
+\subsubsection{Why Two Values Are Sufficient}
 
-More granular continuity classes were considered:
+The \texttt{Continuous}/\texttt{Discontinuous} binary classification
+is deliberate.  Methods that appear to require finer distinctions are
+already handled by the existing two values combined with standard CGNS
+patterns:
 
-\begin{itemize}[leftmargin=2em]
-\item \texttt{MixedContinuity} --- for HDG-like methods with both
-  continuous trace DOFs and discontinuous volume DOFs.
-\item \texttt{WeaklyContinuous} --- for penalized DG methods where
-  continuity is weakly enforced.
-\item $C^k$ continuity order --- for isogeometric analysis with
-  higher-than-$C^0$ smoothness.
-\end{itemize}
+\begin{description}[leftmargin=2em]
+\item[HDG and mixed-continuity methods] use both element-local
+  volume DOFs and globally continuous trace DOFs.  These are stored as
+  separate \texttt{FlowSolution\_t} nodes---one marked
+  \texttt{Discontinuous}, the other \texttt{Continuous}---following the
+  same pattern CGNS already uses to separate fields at different
+  \texttt{GridLocation\_t} values.  A dedicated
+  \texttt{MixedContinuity} value would conflate two distinct data
+  layouts into a single node, making it harder, not easier, for
+  post-processors to interpret the data.
 
-These were deferred in favor of simplicity.  The
-\texttt{SolutionRepresentationUserDefined} value provides an escape
-hatch, and additional enumeration values can be added in future CPEXes
-without breaking backward compatibility.  In practice, the
-overwhelming majority of current CFD codes fall cleanly into the
-continuous or discontinuous categories.
+\item[Penalized / weakly-continuous DG methods] enforce continuity
+  through penalty terms in the variational formulation, but the data
+  layout remains element-local: each element owns its own DOFs.  The
+  correct label is \texttt{Discontinuous}.  ``Weak continuity'' is a
+  solver-internal property of the numerical method, not a property of
+  the stored data that readers and post-processors need to act on.
 
-For HDG methods, the recommended approach is to use separate
-\texttt{FlowSolution\_t} nodes: one with
-\texttt{Discontinuous} for the volume DOFs and one
-with \texttt{Continuous} for the trace (skeleton)
-DOFs.
+\item[Isogeometric analysis ($C^k$, $k \geq 1$)] uses basis functions
+  with higher-than-$C^0$ smoothness, but the data layout is still
+  globally continuous with shared DOFs at patch interfaces.  The
+  correct label is \texttt{Continuous}.  The smoothness order $k$ is a
+  property of the basis, not of the data layout; it belongs in the
+  interpolation metadata (CPEX~0045), not in the representation type.
+\end{description}
+
+The \texttt{SolutionRepresentationUserDefined} value remains available
+for unforeseen cases, and additional enumeration values can be added
+in future CPEXes without breaking backward compatibility.
 
 \subsection{SIDS Node Definition}
 \label{sec:sids-node}
