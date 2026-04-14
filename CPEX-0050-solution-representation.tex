@@ -116,7 +116,7 @@
 \begin{tabular}{@{} >{\bfseries\color{cgnsblue}}l l @{}}
 \toprule
 CPEX\#           & 0050 \\
-Scope            & Distinguish continuous and discontinuous solution representations \\
+Scope            & Distinguish continuous and discontinuous solution continuity \\
 Champion         & M.\ Scot Breitenfeld \\
 Organization     & The HDF Group \\
 E-mail           & \href{mailto:brtnfld@hdfgroup.org}{brtnfld@hdfgroup.org} \\
@@ -139,10 +139,10 @@ MLL Status       & proposed \\
 \section{Abstract}
 %% ═════════════════════════════════════════════════════════════════════════
 
-This CPEX proposes adding a \texttt{SolutionRepresentation\_t}
+This CPEX proposes adding a \texttt{SolutionContinuity\_t}
 enumeration and corresponding SIDS node to the CGNS standard, enabling
 CGNS files to record whether solution data uses a continuous or
-discontinuous field representation.  This distinction---most commonly
+discontinuous field continuity.  This distinction---most commonly
 associated with Continuous Galerkin (CG) and Discontinuous Galerkin
 (DG) finite element methods---is fundamental to the correct
 interpretation of solution data but is not captured by any existing
@@ -219,7 +219,7 @@ distinction:
   can index subsets of data but does not encode continuity semantics.
 
 \item[\texttt{InterpolationType\_t}] (CPEX~0045) describes the
-  polynomial basis (Lagrange, monomial, isoparametric) but not whether
+  polynomial basis (e.g., Lagrange, monomial) but not whether
   that basis yields a globally continuous or element-local field.
 
 \item[\texttt{SolutionInterpolation\_t}] (CPEX~0045) records
@@ -267,41 +267,41 @@ within the higher-order interpolation infrastructure.
 The proposal introduces:
 
 \begin{enumerate}[leftmargin=2em]
-\item A new \texttt{SolutionRepresentation\_t} enumeration with values
-  covering the common representation types.
+\item A new \texttt{SolutionContinuity\_t} enumeration with values
+  covering the common continuity types.
 \item A new optional child node of \texttt{FlowSolution\_t},
   \texttt{DiscreteData\_t}, and \texttt{ZoneSubRegion\_t} recording
-  the solution representation.
-\item Mid-Level Library functions to read and write the representation.
+  the solution continuity.
+\item Mid-Level Library functions to read and write the continuity.
 \item Fortran bindings.
 \end{enumerate}
 
-\subsection{New Enumeration: \texttt{SolutionRepresentation\_t}}
+\subsection{New Enumeration: \texttt{SolutionContinuity\_t}}
 \label{sec:enum}
 
 \begin{lstlisting}[language=C]
 typedef enum {
-  CGNS_ENUMV( SolutionRepresentationNull )        = CG_Null,
-  CGNS_ENUMV( SolutionRepresentationUserDefined )  = CG_UserDefined,
+  CGNS_ENUMV( SolutionContinuityNull )        = CG_Null,
+  CGNS_ENUMV( SolutionContinuityUserDefined )  = CG_UserDefined,
   CGNS_ENUMV( Continuous )                          = 2,
   CGNS_ENUMV( Discontinuous )                       = 3
-} CGNS_ENUMT( SolutionRepresentation_t );
+} CGNS_ENUMT( SolutionContinuity_t );
 
-#define NofValidSolutionRepresentation 4
+#define NofValidSolutionContinuity 4
 
 extern CGNSDLL const char *
-    SolutionRepresentationName[NofValidSolutionRepresentation];
+    SolutionContinuityName[NofValidSolutionContinuity];
 \end{lstlisting}
 
 The enumeration values are:
 
 \begin{description}[leftmargin=2em]
-\item[\texttt{SolutionRepresentationNull}] No representation
+\item[\texttt{SolutionContinuityNull}] No continuity
   specified.  This is the default for backward compatibility: existing
   files and codes that do not set this field are unaffected.
 
-\item[\texttt{SolutionRepresentationUserDefined}] Application-defined
-  representation not covered by the standard values.
+\item[\texttt{SolutionContinuityUserDefined}] Application-defined
+  continuity not covered by the standard values.
 
 \item[\texttt{Continuous}] The solution field is
   globally $C^0$-continuous (or higher) across element interfaces.
@@ -347,17 +347,17 @@ patterns:
   globally continuous with shared DOFs at patch interfaces.  The
   correct label is \texttt{Continuous}.  The smoothness order $k$ is a
   property of the basis, not of the data layout; it belongs in the
-  interpolation metadata (CPEX~0045), not in the representation type.
+  interpolation metadata (CPEX~0045), not in the continuity type.
 \end{description}
 
-The \texttt{SolutionRepresentationUserDefined} value remains available
+The \texttt{SolutionContinuityUserDefined} value remains available
 as an escape hatch, consistent with CGNS convention for all
 enumeration types.
 
 \subsection{SIDS Node Definition}
 \label{sec:sids-node}
 
-The representation is stored as a new optional child node of
+The continuity is stored as a new optional child node of
 \texttt{FlowSolution\_t}.  The amended SIDS definition adds one line
 (shown with the \texttt{+} marker).  The definition below includes the
 \texttt{SolutionInterpolation\_t} child introduced by CPEX~0045:
@@ -385,15 +385,15 @@ FlowSolution\_t< int CellDimension, int IndexDimension, \\
 \\
 \quad SolutionInterpolation\_t SolutionInterpolation ; \qquad\quad\;\;\;\; (o) \quad\textit{(CPEX 0045)} \\
 \\
-+ \quad SolutionRepresentation\_t SolutionRepresentation ; \qquad\quad\;\; (o) \\
++ \quad SolutionContinuity\_t SolutionContinuity ; \qquad\quad\;\; (o) \\
 \\
 \quad List( UserDefinedData\_t UserDefinedData1 ... UserDefinedDataN ) ; (o) \\
 \quad \}
 \end{sidsnode}
 
-The \texttt{SolutionRepresentation} child is \textbf{optional}
-(\texttt{o}).  When absent, the representation is unspecified
-(\texttt{SolutionRepresentationNull}), preserving full backward
+The \texttt{SolutionContinuity} child is \textbf{optional}
+(\texttt{o}).  When absent, the continuity is unspecified
+(\texttt{SolutionContinuityNull}), preserving full backward
 compatibility.
 
 The same optional child node is added to \texttt{DiscreteData\_t}
@@ -406,24 +406,24 @@ DiscreteData\_t< int CellDimension, int IndexDimension, \\
 \quad \{ \\
 \quad ... (existing children unchanged) ... \\
 \\
-+ \quad SolutionRepresentation\_t SolutionRepresentation ; \qquad\quad\;\; (o) \\
++ \quad SolutionContinuity\_t SolutionContinuity ; \qquad\quad\;\; (o) \\
 \quad \}
 \end{sidsnode}
 
 The optional child node is also added to \texttt{ZoneSubRegion\_t}
-(SIDS Section~9.4).  \texttt{ZoneSubRegion\_t} holds
+(SIDS Section~7.9).  \texttt{ZoneSubRegion\_t} holds
 \texttt{DataArray\_t} nodes for localized solutions, boundary fluxes,
 or fields on sub-regions where the continuous/discontinuous distinction
 applies equally:
 
-\begin{sidsnode}{ZoneSubRegion\_t (amended, SIDS Section 9.4)}
+\begin{sidsnode}{ZoneSubRegion\_t (amended, SIDS Section 7.9)}
 ZoneSubRegion\_t< int CellDimension, int IndexDimension, \\
 \qquad\qquad\quad int VertexSize[IndexDimension], \\
 \qquad\qquad\quad int CellSize[IndexDimension] > := \\
 \quad \{ \\
 \quad ... (existing children unchanged) ... \\
 \\
-+ \quad SolutionRepresentation\_t SolutionRepresentation ; \qquad\quad\;\; (o) \\
++ \quad SolutionContinuity\_t SolutionContinuity ; \qquad\quad\;\; (o) \\
 \quad \}
 \end{sidsnode}
 
@@ -434,11 +434,11 @@ than, for example, \texttt{Zone\_t} or
 \texttt{SolutionInterpolation\_t}) because:
 
 \begin{itemize}[leftmargin=2em]
-\item The representation is a property of the \emph{solution field},
+\item The continuity is a property of the \emph{solution field},
   not of the mesh or the zone.
 
 \item A single zone may contain multiple \texttt{FlowSolution\_t}
-  nodes with different representations---for example, an HDG solver
+  nodes with different continuity---for example, an HDG solver
   storing both volume (discontinuous) and trace (continuous) solutions,
   or a multi-physics code storing a continuous displacement field
   alongside a discontinuous stress field.
@@ -459,116 +459,116 @@ than, for example, \texttt{Zone\_t} or
 
 \begin{lstlisting}[language=C]
 /*
- * Write the solution representation for a FlowSolution_t node.
+ * Write the solution continuity for a FlowSolution_t node.
  *
  * fn   - file number
  * B    - base index
  * Z    - zone index
  * S    - solution index
- * type - SolutionRepresentation_t value
+ * type - SolutionContinuity_t value
  */
-int cg_sol_representation_write(
+int cg_sol_continuity_write(
     int fn, int B, int Z, int S,
-    CGNS_ENUMT(SolutionRepresentation_t) type);
+    CGNS_ENUMT(SolutionContinuity_t) type);
 
 /*
- * Read the solution representation for a FlowSolution_t node.
+ * Read the solution continuity for a FlowSolution_t node.
  *
  * fn   - file number
  * B    - base index
  * Z    - zone index
  * S    - solution index
- * type - [out] SolutionRepresentation_t value;
- *        returns SolutionRepresentationNull if node absent
+ * type - [out] SolutionContinuity_t value;
+ *        returns SolutionContinuityNull if node absent
  */
-int cg_sol_representation_read(
+int cg_sol_continuity_read(
     int fn, int B, int Z, int S,
-    CGNS_ENUMT(SolutionRepresentation_t) *type);
+    CGNS_ENUMT(SolutionContinuity_t) *type);
 
 /*
- * Write/read the solution representation for a DiscreteData_t node.
+ * Write/read the solution continuity for a DiscreteData_t node.
  * Same semantics as the FlowSolution_t counterparts.
  *
  * fn   - file number
  * B    - base index
  * Z    - zone index
  * D    - discrete data index
- * type - SolutionRepresentation_t value
+ * type - SolutionContinuity_t value
  */
-int cg_discrete_representation_write(
+int cg_discrete_continuity_write(
     int fn, int B, int Z, int D,
-    CGNS_ENUMT(SolutionRepresentation_t) type);
+    CGNS_ENUMT(SolutionContinuity_t) type);
 
-int cg_discrete_representation_read(
+int cg_discrete_continuity_read(
     int fn, int B, int Z, int D,
-    CGNS_ENUMT(SolutionRepresentation_t) *type);
+    CGNS_ENUMT(SolutionContinuity_t) *type);
 
 /*
- * Write/read the solution representation for a ZoneSubRegion_t node.
+ * Write/read the solution continuity for a ZoneSubRegion_t node.
  * Same semantics as the FlowSolution_t counterparts.
  *
  * fn   - file number
  * B    - base index
  * Z    - zone index
  * SR   - sub-region index
- * type - SolutionRepresentation_t value
+ * type - SolutionContinuity_t value
  */
-int cg_subreg_representation_write(
+int cg_subreg_continuity_write(
     int fn, int B, int Z, int SR,
-    CGNS_ENUMT(SolutionRepresentation_t) type);
+    CGNS_ENUMT(SolutionContinuity_t) type);
 
-int cg_subreg_representation_read(
+int cg_subreg_continuity_read(
     int fn, int B, int Z, int SR,
-    CGNS_ENUMT(SolutionRepresentation_t) *type);
+    CGNS_ENUMT(SolutionContinuity_t) *type);
 \end{lstlisting}
 
 \textbf{Behavior:}
 
 \begin{itemize}[leftmargin=2em]
 \item The \texttt{\_write} functions create (or overwrite)
-  the \texttt{SolutionRepresentation} child node under the specified
+  the \texttt{SolutionContinuity} child node under the specified
   \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t}, or
   \texttt{ZoneSubRegion\_t} node.  Writing
-  \texttt{SolutionRepresentationNull} removes the node if present.
+  \texttt{SolutionContinuityNull} removes the node if present.
 
 \item The \texttt{\_read} functions return the value stored
-  in the \texttt{SolutionRepresentation} child node.  If the node does
+  in the \texttt{SolutionContinuity} child node.  If the node does
   not exist (legacy file or unset), they return
-  \texttt{SolutionRepresentationNull} without error.
+  \texttt{SolutionContinuityNull} without error.
 \end{itemize}
 
 \subsubsection{Fortran API}
 
 \begin{lstlisting}[language=Fortran]
 ! FlowSolution_t
-subroutine cg_sol_representation_write_f( &
+subroutine cg_sol_continuity_write_f( &
     fn, B, Z, S, type, ier)
   integer, intent(in) :: fn, B, Z, S, type
   integer, intent(out) :: ier
 
-subroutine cg_sol_representation_read_f( &
+subroutine cg_sol_continuity_read_f( &
     fn, B, Z, S, type, ier)
   integer, intent(in) :: fn, B, Z, S
   integer, intent(out) :: type, ier
 
 ! DiscreteData_t
-subroutine cg_discrete_representation_write_f( &
+subroutine cg_discrete_continuity_write_f( &
     fn, B, Z, D, type, ier)
   integer, intent(in) :: fn, B, Z, D, type
   integer, intent(out) :: ier
 
-subroutine cg_discrete_representation_read_f( &
+subroutine cg_discrete_continuity_read_f( &
     fn, B, Z, D, type, ier)
   integer, intent(in) :: fn, B, Z, D
   integer, intent(out) :: type, ier
 
 ! ZoneSubRegion_t
-subroutine cg_subreg_representation_write_f( &
+subroutine cg_subreg_continuity_write_f( &
     fn, B, Z, SR, type, ier)
   integer, intent(in) :: fn, B, Z, SR, type
   integer, intent(out) :: ier
 
-subroutine cg_subreg_representation_read_f( &
+subroutine cg_subreg_continuity_read_f( &
     fn, B, Z, SR, type, ier)
   integer, intent(in) :: fn, B, Z, SR
   integer, intent(out) :: type, ier
@@ -586,31 +586,31 @@ typedef struct {            /* FlowSolution_t node */
     /* ... existing fields ... */
 
     /* CPEX 0050 */
-    CGNS_ENUMT(SolutionRepresentation_t) representation;
-    double representation_id;   /* CGIO node id for overwrite/delete */
+    CGNS_ENUMT(SolutionContinuity_t) continuity;
+    double continuity_id;   /* CGIO node id for overwrite/delete */
 } cgns_sol;
 
 typedef struct {            /* DiscreteData_t node */
     /* ... existing fields ... */
 
     /* CPEX 0050 */
-    CGNS_ENUMT(SolutionRepresentation_t) representation;
-    double representation_id;
+    CGNS_ENUMT(SolutionContinuity_t) continuity;
+    double continuity_id;
 } cgns_discrete;
 
 typedef struct {            /* ZoneSubRegion_t node */
     /* ... existing fields ... */
 
     /* CPEX 0050 */
-    CGNS_ENUMT(SolutionRepresentation_t) representation;
-    double representation_id;
+    CGNS_ENUMT(SolutionContinuity_t) continuity;
+    double continuity_id;
 } cgns_subreg;
 \end{lstlisting}
 
-The \texttt{representation} field defaults to
-\texttt{SolutionRepresentationNull} (value~0), which is the
+The \texttt{continuity} field defaults to
+\texttt{SolutionContinuityNull} (value~0), which is the
 zero-initialization value and the ``not specified'' state.  The
-\texttt{representation\_id} field stores the CGIO node identifier so
+\texttt{continuity\_id} field stores the CGIO node identifier so
 that the write function can overwrite or delete the child node; it
 defaults to~0 (no node).
 
@@ -621,7 +621,7 @@ The string-to-enum mapping table must be initialized in
 resolve the C1 character data stored in CGNS files:
 
 \begin{lstlisting}[language=C]
-const char *SolutionRepresentationName[NofValidSolutionRepresentation] = {
+const char *SolutionContinuityName[NofValidSolutionContinuity] = {
     "Null",
     "UserDefined",
     "Continuous",
@@ -637,7 +637,7 @@ const char *SolutionRepresentationName[NofValidSolutionRepresentation] = {
 When a CGNS file is opened, the MLL tree parser
 (\texttt{cgi\_read\_node}) crawls the HDF5/CGIO tree and populates
 internal C structures.  The parser must be updated to recognize child
-nodes with label \texttt{SolutionRepresentation\_t} during the
+nodes with label \texttt{SolutionContinuity\_t} during the
 traversal of \texttt{FlowSolution\_t} (\texttt{cgi\_read\_sol}),
 \texttt{DiscreteData\_t} (\texttt{cgi\_read\_discrete}), and
 \texttt{ZoneSubRegion\_t} (\texttt{cgi\_read\_subreg}).
@@ -647,16 +647,16 @@ The required behavior is:
 \begin{enumerate}[leftmargin=2em]
 \item During memory allocation of \texttt{cgns\_sol},
   \texttt{cgns\_discrete}, and \texttt{cgns\_subreg}, the
-  \texttt{representation} field is zero-initialized, which corresponds
-  to \texttt{SolutionRepresentationNull}.
+  \texttt{continuity} field is zero-initialized, which corresponds
+  to \texttt{SolutionContinuityNull}.
 \item During the child-node traversal, if a child with label
-  \texttt{"SolutionRepresentation\_t"} is found, read its C1 string
+  \texttt{"SolutionContinuity\_t"} is found, read its C1 string
   data and map it to the enum value via
-  \texttt{cgi\_enum\_val("SolutionRepresentation\_t", string\_data,
+  \texttt{cgi\_enum\_val("SolutionContinuity\_t", string\_data,
   \&enum\_val)}.  Store the result in the struct's
-  \texttt{representation} field.
+  \texttt{continuity} field.
 \item If no such child node exists, the field retains its default
-  \texttt{SolutionRepresentationNull} value.
+  \texttt{SolutionContinuityNull} value.
 \end{enumerate}
 
 This follows the existing pattern used for \texttt{GridLocation\_t}
@@ -665,16 +665,17 @@ parsing in \texttt{cgi\_read\_sol}.
 \subsubsection{Read Function Error Handling}
 
 The \texttt{\_read} functions (e.g.,
-\texttt{cg\_sol\_representation\_read}) return the cached struct field
+\texttt{cg\_sol\_continuity\_read}) return the cached struct field
 rather than performing a fresh HDF5 read.  Because the internal tree
 parser already handles the absent-node case by leaving the field at
-\texttt{SolutionRepresentationNull}, the read function simply returns
+\texttt{SolutionContinuityNull}, the read function simply returns
 the struct value and \texttt{CG\_OK}:
 
 \begin{lstlisting}[language=C]
-int cg_sol_representation_read(int fn, int B, int Z, int S,
-                               CGNS_ENUMT(SolutionRepresentation_t) *type) {
+int cg_sol_continuity_read(int fn, int B, int Z, int S,
+                               CGNS_ENUMT(SolutionContinuity_t) *type) {
     cgns_sol *sol;
+    cgns_file *cg;
 
     cg = cgi_get_file(fn);
     if (cg == 0) return CG_ERROR;
@@ -685,7 +686,7 @@ int cg_sol_representation_read(int fn, int B, int Z, int S,
     sol = cgi_get_sol(cg, B, Z, S);
     if (sol == NULL) return CG_ERROR;
 
-    *type = sol->representation;
+    *type = sol->continuity;
 
     return CG_OK;
 }
@@ -695,24 +696,25 @@ This architecture avoids the need to intercept
 \texttt{CG\_NODE\_NOT\_FOUND} errors at read time---the absent-node
 case is handled once during file open, and all subsequent reads are
 served from the in-memory cache.  Legacy code that iterates over
-solutions and queries the representation will always receive
-\texttt{CG\_OK} with \texttt{SolutionRepresentationNull} for files
+solutions and queries the continuity will always receive
+\texttt{CG\_OK} with \texttt{SolutionContinuityNull} for files
 that predate this CPEX.
 
 \subsubsection{Write Function Implementation}
 
 The \texttt{\_write} functions create (or overwrite) the
-\texttt{SolutionRepresentation} child node.  Writing
-\texttt{SolutionRepresentationNull} removes the node if present,
+\texttt{SolutionContinuity} child node.  Writing
+\texttt{SolutionContinuityNull} removes the node if present,
 restoring the ``unspecified'' state.  The reference implementation for
 \texttt{FlowSolution\_t} is shown below; the
 \texttt{DiscreteData\_t} and \texttt{ZoneSubRegion\_t} variants are
 analogous (substituting the appropriate internal structure accessor).
 
 \begin{lstlisting}[language=C]
-int cg_sol_representation_write(int fn, int B, int Z, int S,
-                                CGNS_ENUMT(SolutionRepresentation_t) type) {
+int cg_sol_continuity_write(int fn, int B, int Z, int S,
+                                CGNS_ENUMT(SolutionContinuity_t) type) {
     cgns_sol *sol;
+    cgns_file *cg;
     cgsize_t length;
     double posit_id;
 
@@ -726,43 +728,43 @@ int cg_sol_representation_write(int fn, int B, int Z, int S,
     if (sol == NULL) return CG_ERROR;
 
     /* Validate enum value */
-    if (type < 0 || type >= NofValidSolutionRepresentation) {
-        cgi_error("Invalid SolutionRepresentation value: %d", type);
+    if (type < 0 || type >= NofValidSolutionContinuity) {
+        cgi_error("Invalid SolutionContinuity value: %d", type);
         return CG_ERROR;
     }
 
     /* Delete existing node if writing Null */
-    if (type == CGNS_ENUMV(SolutionRepresentationNull)) {
-        if (sol->representation !=
-                CGNS_ENUMV(SolutionRepresentationNull)) {
+    if (type == CGNS_ENUMV(SolutionContinuityNull)) {
+        if (sol->continuity !=
+                CGNS_ENUMV(SolutionContinuityNull)) {
             if (cgi_delete_node(sol->id,
-                    sol->representation_id))
+                    sol->continuity_id))
                 return CG_ERROR;
-            sol->representation =
-                CGNS_ENUMV(SolutionRepresentationNull);
-            sol->representation_id = 0;
+            sol->continuity =
+                CGNS_ENUMV(SolutionContinuityNull);
+            sol->continuity_id = 0;
         }
         return CG_OK;
     }
 
     /* Create or overwrite the child node */
     length = (cgsize_t)strlen(
-        SolutionRepresentationName[type]);
-    if (cgi_new_node(sol->id, "SolutionRepresentation",
-            "SolutionRepresentation_t", &posit_id,
+        SolutionContinuityName[type]);
+    if (cgi_new_node(sol->id, "SolutionContinuity",
+            "SolutionContinuity_t", &posit_id,
             "C1", 1, &length,
-            (void *)SolutionRepresentationName[type]))
+            (void *)SolutionContinuityName[type]))
         return CG_ERROR;
 
-    sol->representation = type;
-    sol->representation_id = posit_id;
+    sol->continuity = type;
+    sol->continuity_id = posit_id;
     return CG_OK;
 }
 \end{lstlisting}
 
-\textbf{Note:} The \texttt{representation\_id} field (a \texttt{double}
+\textbf{Note:} The \texttt{continuity\_id} field (a \texttt{double}
 storing the CGIO node identifier) must be added to the internal
-structures alongside the \texttt{representation} field so that the
+structures alongside the \texttt{continuity} field so that the
 node can be located for overwrite or deletion.  This follows the
 pattern used by other optional child nodes in the MLL (e.g.,
 \texttt{GridLocation} tracking via \texttt{location\_id} fields in
@@ -794,7 +796,7 @@ higher-order solution field.  They are orthogonal:
 \midrule
 Lagrange $p=1$ & CG FEM & DG $p=1$ \\
 Lagrange $p=3$ & CG spectral & DG spectral \\
-Monomial $p=2$ & CG (modal) & DG (modal) \\
+Hierarchical $p=2$ & CG (modal) & DG (modal) \\
 $p=0$ (constant) & --- & FV / DG $p=0$ \\
 \bottomrule
 \end{tabular}
@@ -806,7 +808,7 @@ InterpolationPoints}, the recommended practice is:
 \begin{enumerate}[leftmargin=2em]
 \item Use CPEX~0045 to define the element type, interpolation basis,
   and polynomial order via \texttt{SolutionInterpolation\_t}.
-\item Use this CPEX to set \texttt{SolutionRepresentation\_t} on the
+\item Use this CPEX to set \texttt{SolutionContinuity\_t} on the
   \texttt{FlowSolution\_t} node to indicate whether the field is
   continuous or discontinuous.
 \end{enumerate}
@@ -815,7 +817,7 @@ For lower-order solutions using \texttt{GridLocation\_t = Vertex} or
 \texttt{CellCenter}, this CPEX can be used independently of CPEX~0045.
 
 \textbf{Data size convention for discontinuous solutions.}  When
-\texttt{SolutionRepresentation\_t = Discontinuous} and the solution
+\texttt{SolutionContinuity\_t = Discontinuous} and the solution
 data is element-local, the \texttt{GridLocation\_t} must be set to
 \texttt{InterpolationPoints} (CPEX~0045) with appropriate
 \texttt{SolutionInterpolation\_t} metadata, or a
@@ -835,25 +837,26 @@ has one value per element with no shared-entity ambiguity.
 
 \begin{itemize}[leftmargin=2em]
 \item \textbf{Existing files:} Fully compatible.  The
-  \texttt{SolutionRepresentation} node is optional; its absence is
-  equivalent to \texttt{SolutionRepresentationNull}.  No existing file
+  \texttt{SolutionContinuity} node is optional; its absence is
+  equivalent to \texttt{SolutionContinuityNull}.  No existing file
   is invalidated.
 
 \item \textbf{Existing readers:} Unaffected.  Per CGNS convention,
   readers silently ignore unknown child nodes.  An older library
-  reading a file with \texttt{SolutionRepresentation} nodes will
+  reading a file with \texttt{SolutionContinuity} nodes will
   simply skip them.
 
 \item \textbf{Existing writers:} Unaffected.  Codes that do not call
   the new API functions produce files without
-  \texttt{SolutionRepresentation} nodes, identical to current
+  \texttt{SolutionContinuity} nodes, identical to current
   behavior.
 
-\item \textbf{ABI:} The \texttt{cgns\_sol} structure grows by one
-  \texttt{int}-sized field.  This is an ABI change requiring
-  recompilation of code that directly accesses the internal
-  structures.  The public API is purely additive (new functions, new
-  enum), so no existing function signatures change.
+\item \textbf{ABI:} The \texttt{cgns\_sol}, \texttt{cgns\_discrete},
+  and \texttt{cgns\_subreg} structures each grow by two fields (one
+  \texttt{int}-sized enum and one \texttt{double} node identifier).
+  This is an ABI change requiring recompilation of code that directly
+  accesses the internal structures.  The public API is purely additive
+  (new functions, new enum), so no existing function signatures change.
 \end{itemize}
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -868,7 +871,7 @@ int S;
 cg_sol_write(fn, B, Z, "FlowSolution", CGNS_ENUMV(Vertex), &S);
 
 /* Mark as continuous (CG FEM) */
-cg_sol_representation_write(fn, B, Z, S,
+cg_sol_continuity_write(fn, B, Z, S,
     CGNS_ENUMV(Continuous));
 
 /* Write solution data (one value per mesh vertex, shared) */
@@ -888,7 +891,7 @@ cg_sol_write(fn, B, Z, "FlowSolution_DG",
 cg_sol_interpolation_order_write(fn, B, Z, S, 3, 0);
 
 /* Mark as discontinuous */
-cg_sol_representation_write(fn, B, Z, S,
+cg_sol_continuity_write(fn, B, Z, S,
     CGNS_ENUMV(Discontinuous));
 
 /* Write element-local DOFs */
@@ -899,8 +902,8 @@ cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
 \subsection{Example 3: Reading and Dispatching on Representation (C)}
 
 \begin{lstlisting}[language=C]
-CGNS_ENUMT(SolutionRepresentation_t) repr;
-cg_sol_representation_read(fn, B, Z, S, &repr);
+CGNS_ENUMT(SolutionContinuity_t) repr;
+cg_sol_continuity_read(fn, B, Z, S, &repr);
 
 switch (repr) {
 case CGNS_ENUMV(Continuous):
@@ -925,14 +928,17 @@ default:
 int S_vol;
 cg_sol_write(fn, B, Z, "VolumeSolution",
     CGNS_ENUMV(InterpolationPoints), &S_vol);
-cg_sol_representation_write(fn, B, Z, S_vol,
+cg_sol_continuity_write(fn, B, Z, S_vol,
     CGNS_ENUMV(Discontinuous));
 
-/* Trace DOFs on element faces (continuous on skeleton) */
+/* Trace DOFs on element faces (continuous on skeleton).
+ * Uses FaceCenter for p=0 traces (one DOF per face).
+ * For higher-order traces, use InterpolationPoints
+ * with CPEX 0045 metadata instead. */
 int S_trace;
 cg_sol_write(fn, B, Z, "TraceSolution",
     CGNS_ENUMV(FaceCenter), &S_trace);
-cg_sol_representation_write(fn, B, Z, S_trace,
+cg_sol_continuity_write(fn, B, Z, S_trace,
     CGNS_ENUMV(Continuous));
 \end{lstlisting}
 
@@ -943,11 +949,11 @@ integer :: S, ier, repr
 
 ! Write a continuous solution
 call cg_sol_write_f(fn, B, Z, 'FlowSolution', Vertex, S, ier)
-call cg_sol_representation_write_f(fn, B, Z, S, &
+call cg_sol_continuity_write_f(fn, B, Z, S, &
     Continuous, ier)
 
-! Read representation
-call cg_sol_representation_read_f(fn, B, Z, S, repr, ier)
+! Read continuity
+call cg_sol_continuity_read_f(fn, B, Z, S, repr, ier)
 if (repr == Discontinuous) then
     ! Element-local interpolation
 end if
@@ -962,14 +968,14 @@ cg_sol_write(fn, B, Z, "FlowSolution",
     CGNS_ENUMV(CellCenter), &S);
 
 /* Explicitly mark as discontinuous */
-cg_sol_representation_write(fn, B, Z, S,
+cg_sol_continuity_write(fn, B, Z, S,
     CGNS_ENUMV(Discontinuous));
 \end{lstlisting}
 
-This example demonstrates that the representation metadata is useful
+This example demonstrates that the continuity metadata is useful
 even for traditional low-order methods.  While a \texttt{CellCenter}
 solution is inherently element-local, explicitly recording the
-representation aids post-processors and coupling frameworks that need
+continuity aids post-processors and coupling frameworks that need
 to distinguish between solution types programmatically.
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -977,7 +983,7 @@ to distinguish between solution types programmatically.
 %% ═════════════════════════════════════════════════════════════════════════
 
 \begin{enumerate}[leftmargin=2em]
-\item \textbf{New enumeration type:} \texttt{SolutionRepresentation\_t}
+\item \textbf{New enumeration type:} \texttt{SolutionContinuity\_t}
   is added to the SIDS building-block structure definitions
   (Section~4 of the SIDS document), alongside existing enumeration
   types such as \texttt{GridLocation\_t} (Section~4.5) and
@@ -986,14 +992,14 @@ to distinguish between solution types programmatically.
 \item \textbf{FlowSolution\_t amendment:} The
   \texttt{FlowSolution\_t} node definition (SIDS Section~7.7) is
   amended to include an optional
-  \texttt{SolutionRepresentation\_t} child node.
+  \texttt{SolutionContinuity\_t} child node.
 
 \item \textbf{DiscreteData\_t amendment:} The
   \texttt{DiscreteData\_t} node definition (SIDS Section~12.4) is
   similarly amended.
 
 \item \textbf{ZoneSubRegion\_t amendment:} The
-  \texttt{ZoneSubRegion\_t} node definition (SIDS Section~9.4) is
+  \texttt{ZoneSubRegion\_t} node definition (SIDS Section~7.9) is
   similarly amended.
 
 \item No existing SIDS node types, enumerations, or conventions are
@@ -1004,7 +1010,7 @@ to distinguish between solution types programmatically.
 \section{File Mapping Impact}
 %% ═════════════════════════════════════════════════════════════════════════
 
-The \texttt{SolutionRepresentation} child node is stored identically
+The \texttt{SolutionContinuity} child node is stored identically
 to \texttt{GridLocation}: as a character node containing the string
 name of the enumeration value.  The file-mapping attributes are:
 
@@ -1013,8 +1019,8 @@ name of the enumeration value.  The file-mapping attributes are:
 \toprule
 \textbf{Attribute} & \textbf{Value} \\
 \midrule
-Node name  & \texttt{SolutionRepresentation} \\
-Label      & \texttt{SolutionRepresentation\_t} \\
+Node name  & \texttt{SolutionContinuity} \\
+Label      & \texttt{SolutionContinuity\_t} \\
 Data type  & \texttt{C1} (character) \\
 Dimension  & 1 \\
 Dimension value & length of enumeration string \\
@@ -1028,9 +1034,9 @@ node under \texttt{FlowSolution\_t}: node name
 \texttt{"GridLocation"}, label \texttt{"GridLocation\_t"}, data type
 \texttt{"C1"}, with the enumeration string as data.
 
-The node is written only when the representation is not
-\texttt{SolutionRepresentationNull}.  When absent, readers default to
-\texttt{SolutionRepresentationNull}, paralleling how an absent
+The node is written only when the continuity is not
+\texttt{SolutionContinuityNull}.  When absent, readers default to
+\texttt{SolutionContinuityNull}, paralleling how an absent
 \texttt{GridLocation} node defaults to \texttt{Vertex}.
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -1044,33 +1050,33 @@ existing CGNS conventions and SIDS precedent.
 \begin{enumerate}[leftmargin=2em]
 
 \item \textbf{Scope: \texttt{BCData\_t} is excluded.}
-  \texttt{SolutionRepresentation\_t} is \emph{not} added to
+  \texttt{SolutionContinuity\_t} is \emph{not} added to
   \texttt{BCData\_t}.  Boundary condition data arrays in
   \texttt{BCData\_t} are sized by the associated
   \texttt{PointList}/\texttt{PointRange} and \texttt{GridLocation\_t},
   which already determine the data layout unambiguously.  In DG
   methods, boundary conditions are typically applied weakly through
   numerical fluxes; the element-local nature of the boundary data
-  follows from the solution representation on the parent
+  follows from the solution continuity on the parent
   \texttt{FlowSolution\_t} node.  Adding
-  \texttt{SolutionRepresentation\_t} to \texttt{BCData\_t} would be
+  \texttt{SolutionContinuity\_t} to \texttt{BCData\_t} would be
   redundant and would introduce a potential inconsistency if the BC
-  representation differs from the solution it constrains.  Should a
-  future use case require per-BC representation metadata (e.g.,
+  continuity differs from the solution it constrains.  Should a
+  future use case require per-BC continuity metadata (e.g.,
   coupling frameworks imposing boundary data in a different
-  representation than the interior), it can be proposed as a
+  continuity than the interior), it can be proposed as a
   separate, narrowly scoped CPEX without affecting this proposal.
 
 \item \textbf{Per-solution-node granularity (not per-field).}
-  The representation applies at the \texttt{FlowSolution\_t} level,
+  The continuity applies at the \texttt{FlowSolution\_t} level,
   meaning all \texttt{DataArray\_t} children share the same
-  representation.  This follows the precedent set by
+  continuity.  This follows the precedent set by
   \texttt{GridLocation\_t}, which is likewise a per-solution-node
   property: all fields within a \texttt{FlowSolution\_t} node share
   the same grid location.  Per-\texttt{DataArray\_t} granularity was
   rejected because it would add significant API and metadata
   complexity with no demonstrated need.  Solvers that genuinely mix
-  representations within a single zone (e.g., HDG methods with
+  continuity types within a single zone (e.g., HDG methods with
   continuous traces and discontinuous volumes) should use separate
   \texttt{FlowSolution\_t} nodes, exactly as they would use separate
   nodes for fields at different \texttt{GridLocation\_t} values.
@@ -1078,7 +1084,7 @@ existing CGNS conventions and SIDS precedent.
 \item \textbf{\texttt{CellCenter} + \texttt{Continuous}: permitted
   but semantically inconsistent.}
   The MLL does \emph{not} enforce consistency between
-  \texttt{SolutionRepresentation\_t} and \texttt{GridLocation\_t}.
+  \texttt{SolutionContinuity\_t} and \texttt{GridLocation\_t}.
   A \texttt{CellCenter} solution is inherently element-local, making
   \texttt{Continuous} semantically contradictory, but the library
   shall not reject such combinations.  This follows the established
@@ -1086,7 +1092,7 @@ existing CGNS conventions and SIDS precedent.
   standard documents correct usage; validation is delegated to
   application-level tools such as \texttt{cgnscheck}.
 
-  \textbf{Convention:} \texttt{SolutionRepresentation\_t = Continuous}
+  \textbf{Convention:} \texttt{SolutionContinuity\_t = Continuous}
   with \texttt{GridLocation\_t = CellCenter} should not be used.
   \texttt{cgnscheck} should issue a warning when this combination is
   encountered.
@@ -1103,21 +1109,21 @@ existing CGNS conventions and SIDS precedent.
 \textbf{Symbol} & \textbf{Description} \\
 \midrule
 \endhead
-\texttt{SolutionRepresentation\_t} & New enumeration type: \texttt{Null}, \texttt{UserDefined}, \texttt{Continuous}, \texttt{Discontinuous}. \\
-\texttt{SolutionRepresentationName} & String table for the enumeration values. \\
-\texttt{NofValidSolutionRepresentation} & Count of valid enumeration values (4). \\
-\texttt{cg\_sol\_representation\_write} & C: write solution representation for a \texttt{FlowSolution\_t} node. \\
-\texttt{cg\_sol\_representation\_read} & C: read solution representation for a \texttt{FlowSolution\_t} node. \\
-\texttt{cg\_discrete\_representation\_write} & C: write solution representation for a \texttt{DiscreteData\_t} node. \\
-\texttt{cg\_discrete\_representation\_read} & C: read solution representation for a \texttt{DiscreteData\_t} node. \\
-\texttt{cg\_subreg\_representation\_write} & C: write solution representation for a \texttt{ZoneSubRegion\_t} node. \\
-\texttt{cg\_subreg\_representation\_read} & C: read solution representation for a \texttt{ZoneSubRegion\_t} node. \\
-\texttt{cg\_sol\_representation\_write\_f} & Fortran: write solution representation (\texttt{FlowSolution\_t}). \\
-\texttt{cg\_sol\_representation\_read\_f} & Fortran: read solution representation (\texttt{FlowSolution\_t}). \\
-\texttt{cg\_discrete\_representation\_write\_f} & Fortran: write solution representation (\texttt{DiscreteData\_t}). \\
-\texttt{cg\_discrete\_representation\_read\_f} & Fortran: read solution representation (\texttt{DiscreteData\_t}). \\
-\texttt{cg\_subreg\_representation\_write\_f} & Fortran: write solution representation (\texttt{ZoneSubRegion\_t}). \\
-\texttt{cg\_subreg\_representation\_read\_f} & Fortran: read solution representation (\texttt{ZoneSubRegion\_t}). \\
+\texttt{SolutionContinuity\_t} & New enumeration type: \texttt{Null}, \texttt{UserDefined}, \texttt{Continuous}, \texttt{Discontinuous}. \\
+\texttt{SolutionContinuityName} & String table for the enumeration values. \\
+\texttt{NofValidSolutionContinuity} & Count of valid enumeration values (4). \\
+\texttt{cg\_sol\_continuity\_write} & C: write solution continuity for a \texttt{FlowSolution\_t} node. \\
+\texttt{cg\_sol\_continuity\_read} & C: read solution continuity for a \texttt{FlowSolution\_t} node. \\
+\texttt{cg\_discrete\_continuity\_write} & C: write solution continuity for a \texttt{DiscreteData\_t} node. \\
+\texttt{cg\_discrete\_continuity\_read} & C: read solution continuity for a \texttt{DiscreteData\_t} node. \\
+\texttt{cg\_subreg\_continuity\_write} & C: write solution continuity for a \texttt{ZoneSubRegion\_t} node. \\
+\texttt{cg\_subreg\_continuity\_read} & C: read solution continuity for a \texttt{ZoneSubRegion\_t} node. \\
+\texttt{cg\_sol\_continuity\_write\_f} & Fortran: write solution continuity (\texttt{FlowSolution\_t}). \\
+\texttt{cg\_sol\_continuity\_read\_f} & Fortran: read solution continuity (\texttt{FlowSolution\_t}). \\
+\texttt{cg\_discrete\_continuity\_write\_f} & Fortran: write solution continuity (\texttt{DiscreteData\_t}). \\
+\texttt{cg\_discrete\_continuity\_read\_f} & Fortran: read solution continuity (\texttt{DiscreteData\_t}). \\
+\texttt{cg\_subreg\_continuity\_write\_f} & Fortran: write solution continuity (\texttt{ZoneSubRegion\_t}). \\
+\texttt{cg\_subreg\_continuity\_read\_f} & Fortran: read solution continuity (\texttt{ZoneSubRegion\_t}). \\
 \bottomrule
 \end{longtable}
 \end{center}
@@ -1133,8 +1139,8 @@ existing CGNS conventions and SIDS precedent.
 \item CGNS Mid-Level Library---Flow Solution,\\
   \url{https://cgns.org/standard/MLL/api/c_api.html}
 
-\item CPEX 0045, ``High-Order Elements and Solutions,''\\
-  \url{https://github.com/CGNS/CGNS/issues/359}
+\item CPEX 0045, ``Polynomial Data and Curved Grid Elements,''\\
+  \url{https://github.com/CGNS/CGNS/issues/577}
 
 \item Hesthaven, J.S.\ and Warburton, T., \emph{Nodal Discontinuous
   Galerkin Methods}, Springer, 2008.
