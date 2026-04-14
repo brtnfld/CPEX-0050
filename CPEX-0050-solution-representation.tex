@@ -82,7 +82,7 @@
 %% ── Header / Footer ────────────────────────────────────────────────────
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small\color{cgnsblue} CPEX 0050 --- Solution Representation Type}
+\fancyhead[L]{\small\color{cgnsblue} CPEX 0050 --- Solution Continuity Type}
 \fancyhead[R]{\small\color{cgnsblue} Version 1.0}
 \fancyfoot[C]{\small\color{cgnsblue}\thepage}
 \renewcommand{\headrulewidth}{0.5pt}
@@ -102,7 +102,7 @@
 \begin{center}
   \includegraphics[width=0.25\textwidth]{CGNS_logo_1.png}\\[1.2em]
   {\LARGE\bfseries\color{cgnsblue} CGNS Proposal for Extension 0050}\\[0.6em]
-  {\Large\color{cgnsteal} Solution Representation Type}\\[0.4em]
+  {\Large\color{cgnsteal} Solution Continuity Type}\\[0.4em]
   {\color{cgnsgold}\rule{0.4\textwidth}{0.8pt}}\\[0.6em]
   {\large Version 1.0}\\[0.6em]
   \today
@@ -899,7 +899,7 @@ cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
     "Pressure", pressure_dg, &F);
 \end{lstlisting}
 
-\subsection{Example 3: Reading and Dispatching on Representation (C)}
+\subsection{Example 3: Reading and Dispatching on Continuity (C)}
 
 \begin{lstlisting}[language=C]
 CGNS_ENUMT(SolutionContinuity_t) repr;
@@ -921,7 +921,7 @@ default:
 }
 \end{lstlisting}
 
-\subsection{Example 4: HDG Solver with Both Representations (C)}
+\subsection{Example 4: HDG Solver with Both Continuity Types (C)}
 
 \begin{lstlisting}[language=C]
 /* Volume DOFs (discontinuous) */
