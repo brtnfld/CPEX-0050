@@ -854,6 +854,9 @@ specifically the correct choice when the DOF positions coincide with
 mesh vertices and the shared-vertex mesh connectivity is to be
 preserved.
 
+See Example~\ref{ex:shared-vertex-dg} for the complete C encoding
+of this pattern.
+
 \texttt{GridLocation\_t = Vertex} with \texttt{Discontinuous} and
 \emph{no} \texttt{PointList} is not valid: the SIDS
 \texttt{DataSize} formula for \texttt{Vertex} yields
@@ -896,6 +899,7 @@ element with no shared-entity ambiguity.
 %% ═════════════════════════════════════════════════════════════════════════
 
 \subsection{Example 1: Writing a Continuous Galerkin Solution (C)}
+\label{ex:cg-write}
 
 \begin{lstlisting}[language=C]
 /* Create a vertex-located solution node */
@@ -912,6 +916,7 @@ cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
 \end{lstlisting}
 
 \subsection{Example 2: Writing a Discontinuous Galerkin Solution (C)}
+\label{ex:dg-write}
 
 \begin{lstlisting}[language=C]
 /* Create an interpolation-point-located solution node */
@@ -932,6 +937,7 @@ cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
 \end{lstlisting}
 
 \subsection{Example 3: Reading and Dispatching on Continuity (C)}
+\label{ex:dispatch}
 
 \begin{lstlisting}[language=C]
 CGNS_ENUMT(SolutionContinuity_t) repr;
@@ -954,6 +960,7 @@ default:
 \end{lstlisting}
 
 \subsection{Example 4: HDG Solver with Both Continuity Types (C)}
+\label{ex:hdg}
 
 \begin{lstlisting}[language=C]
 /* Volume DOFs (discontinuous) */
@@ -975,6 +982,7 @@ cg_sol_continuity_write(fn, B, Z, S_trace,
 \end{lstlisting}
 
 \subsection{Example 5: Fortran Usage}
+\label{ex:fortran}
 
 \begin{lstlisting}[language=Fortran]
 integer :: S, ier, repr
@@ -992,6 +1000,7 @@ end if
 \end{lstlisting}
 
 \subsection{Example 6: Low-Order Finite Volume (DG $p=0$)}
+\label{ex:fv}
 
 \begin{lstlisting}[language=C]
 /* Cell-centered FV solution */
@@ -1011,6 +1020,7 @@ continuity aids post-processors and coupling frameworks that need
 to distinguish between solution types programmatically.
 
 \subsection{Example 7: DG Solution on a Shared-Vertex Mesh (C)}
+\label{ex:shared-vertex-dg}
 
 This example addresses the case where the mesh uses shared vertices
 (enabling stream tracing and mesh walking via standard
