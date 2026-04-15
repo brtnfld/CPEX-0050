@@ -815,20 +815,53 @@ InterpolationPoints}, the recommended practice is:
 For lower-order solutions using \texttt{GridLocation\_t = Vertex} or
 \texttt{CellCenter}, this CPEX can be used independently of CPEX~0045.
 
-\textbf{Data size convention for discontinuous solutions.}  When
-\texttt{SolutionContinuity\_t = Discontinuous} and the solution
-data is element-local, the \texttt{GridLocation\_t} must be set to
-\texttt{InterpolationPoints} (CPEX~0045) with appropriate
-\texttt{SolutionInterpolation\_t} metadata, or a
-\texttt{PointList}/\texttt{PointRange} must be used to index the
-element-local DOFs.  Using \texttt{GridLocation\_t = Vertex} with
-\texttt{Discontinuous} and no \texttt{PointList} is not valid, because
-the SIDS \texttt{DataSize} formula for \texttt{Vertex} assumes
-shared-vertex semantics ($\texttt{DataSize} = \texttt{VertexSize}$)
-and cannot represent the element-local duplication inherent in a
-discontinuous field.  \texttt{GridLocation\_t = CellCenter} with
-\texttt{Discontinuous} remains valid since cell-centered data already
-has one value per element with no shared-entity ambiguity.
+\textbf{Data layout for discontinuous solutions at shared mesh vertices.}
+A common and important case arises when a DG solver uses a mesh whose
+vertices are shared in the standard CGNS sense---enabling mesh walking,
+stream tracing, and connectivity queries via the standard
+\texttt{Elements\_t} tables---but stores element-local, independent
+solution values at each element's copy of those vertices.  At a shared
+vertex adjacent to $k$ elements there are $k$ distinct solution values,
+one per element; readers must not average or conflate them.
+
+The correct CGNS encoding for this pattern is
+\texttt{GridLocation\_t = Vertex} combined with
+\texttt{SolutionContinuity\_t = Discontinuous} and a
+\texttt{PointList} that lists every element-vertex pair explicitly
+(repeated vertex indices are expected and meaningful).  The
+\texttt{SolutionContinuity\_t} node is the machine-readable flag that
+tells readers these repeated entries represent independent DOFs, not
+duplicate data.
+
+Without the \texttt{SolutionContinuity\_t} node, a reader cannot
+distinguish this layout from a malformed continuous solution with
+duplicate entries, which is why the node is necessary.  With it, a
+post-processor or coupling framework can correctly:
+
+\begin{itemize}[leftmargin=2em]
+\item walk the mesh using the shared-vertex connectivity for geometry
+  operations (stream tracing, surface intersection, etc.);
+\item read solution values element-locally, preserving the jumps at
+  shared interfaces.
+\end{itemize}
+
+For element-local DOFs at non-vertex positions (interior quadrature
+points, face quadrature points, etc.), use
+\texttt{GridLocation\_t = InterpolationPoints} with
+\texttt{SolutionInterpolation\_t} metadata from CPEX~0045.
+\texttt{GridLocation\_t = Vertex} with a \texttt{PointList} is
+specifically the correct choice when the DOF positions coincide with
+mesh vertices and the shared-vertex mesh connectivity is to be
+preserved.
+
+\texttt{GridLocation\_t = Vertex} with \texttt{Discontinuous} and
+\emph{no} \texttt{PointList} is not valid: the SIDS
+\texttt{DataSize} formula for \texttt{Vertex} yields
+$\texttt{DataSize} = \texttt{VertexSize}$ (the shared-vertex count),
+which cannot represent the larger element-local DOF count.
+\texttt{GridLocation\_t = CellCenter} with \texttt{Discontinuous}
+remains valid since cell-centered data is inherently one value per
+element with no shared-entity ambiguity.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Backward Compatibility}
@@ -976,6 +1009,68 @@ even for traditional low-order methods.  While a \texttt{CellCenter}
 solution is inherently element-local, explicitly recording the
 continuity aids post-processors and coupling frameworks that need
 to distinguish between solution types programmatically.
+
+\subsection{Example 7: DG Solution on a Shared-Vertex Mesh (C)}
+
+This example addresses the case where the mesh uses shared vertices
+(enabling stream tracing and mesh walking via standard
+\texttt{Elements\_t} connectivity), but each element stores its own
+independent solution values at those vertices.  The
+\texttt{SolutionContinuity\_t} node is the flag that tells readers
+the repeated vertex indices in the \texttt{PointList} are independent
+DOFs, not duplicates.
+
+\begin{lstlisting}[language=C]
+/*
+ * Mesh: nVerts shared vertices, nElems elements,
+ *       nVertsPerElem vertices per element.
+ * Solution: element-local DOFs at each element's vertices.
+ *           Total DOFs = nElems * nVertsPerElem.
+ */
+
+/* Build the point list: for each element, list its vertex indices.
+ * Shared vertices appear multiple times -- once per adjacent element. */
+cgsize_t point_list[nElems * nVertsPerElem];
+for (int e = 0; e < nElems; e++)
+    for (int v = 0; v < nVertsPerElem; v++)
+        point_list[e * nVertsPerElem + v] =
+            element_connectivity[e][v];  /* 1-based vertex index */
+
+/* Create solution node: Vertex location preserves shared-mesh
+ * connectivity for geometry operations. */
+int S;
+cg_sol_write(fn, B, Z, "FlowSolution_DG",
+    CGNS_ENUMV(Vertex), &S);
+
+/* PointList defines the element-local DOF ordering.
+ * DataSize = nElems * nVertsPerElem (not nVerts). */
+cg_ptset_write(fn, B, Z, S,
+    CGNS_ENUMV(PointList),
+    (cgsize_t)(nElems * nVertsPerElem),
+    point_list);
+
+/* Mark as discontinuous: values at repeated vertex indices
+ * are independent across elements. */
+cg_sol_continuity_write(fn, B, Z, S,
+    CGNS_ENUMV(Discontinuous));
+
+/* Write element-local solution data */
+cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
+    "Pressure", pressure_dg, &F);
+\end{lstlisting}
+
+A reader distinguishes this from a continuous solution as follows:
+
+\begin{lstlisting}[language=C]
+CGNS_ENUMT(SolutionContinuity_t) cont;
+cg_sol_continuity_read(fn, B, Z, S, &cont);
+
+if (cont == CGNS_ENUMV(Discontinuous)) {
+    /* PointList entries are element-local DOF indices.
+     * Values at the same vertex index from different elements
+     * are independent -- do not average. */
+}
+\end{lstlisting}
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{SIDS Impact}
