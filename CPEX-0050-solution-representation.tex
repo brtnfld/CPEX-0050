@@ -769,6 +769,60 @@ pattern used by other optional child nodes in the MLL (e.g.,
 \texttt{GridLocation} tracking via \texttt{location\_id} fields in
 some internal paths).
 
+%% ─────────────────────────────────────────────────────────────────────────
+\subsection{Data Layout for Discontinuous Solutions at Shared Mesh Vertices}
+\label{sec:shared-vertex-layout}
+
+A common and important case arises when a DG solver uses a mesh whose
+vertices are shared in the standard CGNS sense---enabling mesh walking,
+stream tracing, and connectivity queries via the standard
+\texttt{Elements\_t} tables---but stores element-local, independent
+solution values at each element's copy of those vertices.  At a shared
+vertex adjacent to $k$ elements there are $k$ distinct solution values,
+one per element; readers must not average or conflate them.
+
+The correct CGNS encoding for this pattern is
+\texttt{GridLocation\_t = Vertex} combined with
+\texttt{SolutionContinuity\_t = Discontinuous} and a
+\texttt{PointList} that lists every element-vertex pair explicitly
+(repeated vertex indices are expected and meaningful).  The
+\texttt{SolutionContinuity\_t} node is the machine-readable flag that
+tells readers these repeated entries represent independent DOFs, not
+duplicate data.
+
+Without the \texttt{SolutionContinuity\_t} node, a reader cannot
+distinguish this layout from a malformed continuous solution with
+duplicate entries, which is why the node is necessary.  With it, a
+post-processor or coupling framework can correctly:
+
+\begin{itemize}[leftmargin=2em]
+\item walk the mesh using the shared-vertex connectivity for geometry
+  operations (stream tracing, surface intersection, etc.);
+\item read solution values element-locally, preserving the jumps at
+  shared interfaces.
+\end{itemize}
+
+For element-local DOFs at non-vertex positions (interior quadrature
+points, face quadrature points, etc.), use
+\texttt{GridLocation\_t = InterpolationPoints} with
+\texttt{SolutionInterpolation\_t} metadata from CPEX~0045.
+\texttt{GridLocation\_t = Vertex} with a \texttt{PointList} is
+specifically the correct choice when the DOF positions coincide with
+mesh vertices and the shared-vertex mesh connectivity is to be
+preserved.
+
+\texttt{GridLocation\_t = Vertex} with \texttt{Discontinuous} and
+\emph{no} \texttt{PointList} is not valid: the SIDS
+\texttt{DataSize} formula for \texttt{Vertex} yields
+$\texttt{DataSize} = \texttt{VertexSize}$ (the shared-vertex count),
+which cannot represent the larger element-local DOF count.
+\texttt{GridLocation\_t = CellCenter} with \texttt{Discontinuous}
+remains valid since cell-centered data is inherently one value per
+element with no shared-entity ambiguity.
+
+See Example~\ref{ex:shared-vertex-dg} for the complete C encoding
+of this pattern.
+
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Interaction with CPEX 0045 (Higher-Order Elements)}
 %% ═════════════════════════════════════════════════════════════════════════
@@ -814,57 +868,8 @@ InterpolationPoints}, the recommended practice is:
 
 For lower-order solutions using \texttt{GridLocation\_t = Vertex} or
 \texttt{CellCenter}, this CPEX can be used independently of CPEX~0045.
-
-\textbf{Data layout for discontinuous solutions at shared mesh vertices.}
-A common and important case arises when a DG solver uses a mesh whose
-vertices are shared in the standard CGNS sense---enabling mesh walking,
-stream tracing, and connectivity queries via the standard
-\texttt{Elements\_t} tables---but stores element-local, independent
-solution values at each element's copy of those vertices.  At a shared
-vertex adjacent to $k$ elements there are $k$ distinct solution values,
-one per element; readers must not average or conflate them.
-
-The correct CGNS encoding for this pattern is
-\texttt{GridLocation\_t = Vertex} combined with
-\texttt{SolutionContinuity\_t = Discontinuous} and a
-\texttt{PointList} that lists every element-vertex pair explicitly
-(repeated vertex indices are expected and meaningful).  The
-\texttt{SolutionContinuity\_t} node is the machine-readable flag that
-tells readers these repeated entries represent independent DOFs, not
-duplicate data.
-
-Without the \texttt{SolutionContinuity\_t} node, a reader cannot
-distinguish this layout from a malformed continuous solution with
-duplicate entries, which is why the node is necessary.  With it, a
-post-processor or coupling framework can correctly:
-
-\begin{itemize}[leftmargin=2em]
-\item walk the mesh using the shared-vertex connectivity for geometry
-  operations (stream tracing, surface intersection, etc.);
-\item read solution values element-locally, preserving the jumps at
-  shared interfaces.
-\end{itemize}
-
-For element-local DOFs at non-vertex positions (interior quadrature
-points, face quadrature points, etc.), use
-\texttt{GridLocation\_t = InterpolationPoints} with
-\texttt{SolutionInterpolation\_t} metadata from CPEX~0045.
-\texttt{GridLocation\_t = Vertex} with a \texttt{PointList} is
-specifically the correct choice when the DOF positions coincide with
-mesh vertices and the shared-vertex mesh connectivity is to be
-preserved.
-
-See Example~\ref{ex:shared-vertex-dg} for the complete C encoding
-of this pattern.
-
-\texttt{GridLocation\_t = Vertex} with \texttt{Discontinuous} and
-\emph{no} \texttt{PointList} is not valid: the SIDS
-\texttt{DataSize} formula for \texttt{Vertex} yields
-$\texttt{DataSize} = \texttt{VertexSize}$ (the shared-vertex count),
-which cannot represent the larger element-local DOF count.
-\texttt{GridLocation\_t = CellCenter} with \texttt{Discontinuous}
-remains valid since cell-centered data is inherently one value per
-element with no shared-entity ambiguity.
+See Section~\ref{sec:shared-vertex-layout} for the prescribed data
+layout when DG DOFs coincide with shared mesh vertices.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Backward Compatibility}
