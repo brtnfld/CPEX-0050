@@ -616,7 +616,7 @@ defaults to~0 (no node).
 \subsection{Internal Lookup Table Initialization}
 
 The string-to-enum mapping table must be initialized in
-\texttt{cgns\_internal.c} so that \texttt{cgi\_enum\_val()} can
+\texttt{cgns\_internals.c} so that \texttt{cgi\_SolutionContinuity()} can
 resolve the C1 character data stored in CGNS files:
 
 \begin{lstlisting}[language=C]
@@ -631,15 +631,15 @@ const char *SolutionContinuityName[NofValidSolutionContinuity] = {
 \subsection{MLL Implementation Requirements}
 \label{sec:mll-impl}
 
-\subsubsection{Internal Tree Parser Update (\texttt{cgns\_internal.c})}
+\subsubsection{Internal Tree Parser Update (\texttt{cgns\_internals.c})}
 
 When a CGNS file is opened, the MLL tree parser
-(\texttt{cgi\_read\_node}) crawls the HDF5/CGIO tree and populates
+crawls the HDF5/CGIO tree and populates
 internal C structures.  The parser must be updated to recognize child
 nodes with label \texttt{SolutionContinuity\_t} during the
 traversal of \texttt{FlowSolution\_t} (\texttt{cgi\_read\_sol}),
 \texttt{DiscreteData\_t} (\texttt{cgi\_read\_discrete}), and
-\texttt{ZoneSubRegion\_t} (\texttt{cgi\_read\_subreg}).
+\texttt{ZoneSubRegion\_t} (\texttt{cgi\_read\_subregion}).
 
 The required behavior is:
 
@@ -651,9 +651,8 @@ The required behavior is:
 \item During the child-node traversal, if a child with label
   \texttt{"SolutionContinuity\_t"} is found, read its C1 string
   data and map it to the enum value via
-  \texttt{cgi\_enum\_val("SolutionContinuity\_t", string\_data,
-  \&enum\_val)}.  Store the result in the struct's
-  \texttt{continuity} field.
+  \texttt{cgi\_SolutionContinuity(string\_data, \&continuity)}.
+  Store the result in the struct's \texttt{continuity} field.
 \item If no such child node exists, the field retains its default
   \texttt{SolutionContinuityNull} value.
 \end{enumerate}
@@ -672,9 +671,8 @@ the struct value and \texttt{CG\_OK}:
 
 \begin{lstlisting}[language=C]
 int cg_sol_continuity_read(int fn, int B, int Z, int S,
-                               CGNS_ENUMT(SolutionContinuity_t) *type) {
+                           CGNS_ENUMT(SolutionContinuity_t) *type) {
     cgns_sol *sol;
-    cgns_file *cg;
 
     cg = cgi_get_file(fn);
     if (cg == 0) return CG_ERROR;
@@ -711,9 +709,8 @@ analogous (substituting the appropriate internal structure accessor).
 
 \begin{lstlisting}[language=C]
 int cg_sol_continuity_write(int fn, int B, int Z, int S,
-                                CGNS_ENUMT(SolutionContinuity_t) type) {
+                            CGNS_ENUMT(SolutionContinuity_t) type) {
     cgns_sol *sol;
-    cgns_file *cg;
     cgsize_t length;
     double posit_id;
 
@@ -746,7 +743,16 @@ int cg_sol_continuity_write(int fn, int B, int Z, int S,
         return CG_OK;
     }
 
-    /* Create or overwrite the child node */
+    /* Delete existing node before overwrite */
+    if (sol->continuity !=
+            CGNS_ENUMV(SolutionContinuityNull)) {
+        if (cgi_delete_node(sol->id,
+                sol->continuity_id))
+            return CG_ERROR;
+        sol->continuity_id = 0;
+    }
+
+    /* Create the child node */
     length = (cgsize_t)strlen(
         SolutionContinuityName[type]);
     if (cgi_new_node(sol->id, "SolutionContinuity",
