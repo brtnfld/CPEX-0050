@@ -194,7 +194,11 @@ This distinction affects:
   files must know whether DOFs are shared or element-local to
   correctly reconstruct the solution state.  Coupling frameworks
   exchanging solution data between codes need this metadata to perform
-  correct inter-code transfers.
+  correct inter-code transfers.  In Fluid-Structure Interaction (FSI)
+  applications, for example, a continuous FEM structural displacement
+  field and a discontinuous DG fluid field coexist---the coupling
+  framework must use different interpolation and projection operators
+  for each, and the continuity metadata enables this dispatch.
 
 \item \textbf{Error estimation and adaptation.}  The jump in solution
   values across element interfaces in a DG solution is physically
@@ -251,6 +255,10 @@ higher-order methods}:
 \item \textbf{Hybridizable DG (HDG)} methods have both element-local
   DOFs (discontinuous) and trace DOFs on faces (continuous on the
   skeleton).
+\item \textbf{FSI and multi-physics coupling} often combines a
+  continuous FEM structural solver (shared displacement DOFs) with a
+  discontinuous DG or FV fluid solver (element-local flow variables)
+  within the same file or across coupled zones.
 \end{itemize}
 
 A proper metadata field should therefore live at the
@@ -822,9 +830,21 @@ preserved.
 \texttt{DataSize} formula for \texttt{Vertex} yields
 $\texttt{DataSize} = \texttt{VertexSize}$ (the shared-vertex count),
 which cannot represent the larger element-local DOF count.
+Similarly, \texttt{PointRange} is not suitable for this case because
+a contiguous range of vertex indices cannot express the element-local
+repetition of shared vertices; only \texttt{PointList} provides the
+necessary per-element DOF ordering.
 \texttt{GridLocation\_t = CellCenter} with \texttt{Discontinuous}
 remains valid since cell-centered data is inherently one value per
 element with no shared-entity ambiguity.
+
+This approach extends naturally to mixed-element meshes
+(\texttt{MIXED}, \texttt{NGON\_n}, \texttt{NFACE\_n}).  The
+\texttt{PointList} simply lists vertex indices for each element in
+element order; elements with different vertex counts contribute
+different numbers of entries.  The \texttt{SolutionContinuity\_t =
+Discontinuous} flag tells readers that repeated vertex indices
+represent independent DOFs regardless of element type heterogeneity.
 
 See Example~\ref{ex:shared-vertex-dg} for the complete C encoding
 of this pattern.
@@ -982,13 +1002,20 @@ cg_sol_continuity_write(fn, B, Z, S_vol,
     CGNS_ENUMV(Discontinuous));
 
 /* Trace DOFs on element faces (continuous on skeleton).
- * Uses FaceCenter for p=0 traces (one DOF per face).
- * For higher-order traces, use InterpolationPoints
- * with CPEX 0045 metadata instead. */
+ * Case A: p=0 traces (one DOF per face) -- use FaceCenter. */
 int S_trace;
 cg_sol_write(fn, B, Z, "TraceSolution",
     CGNS_ENUMV(FaceCenter), &S_trace);
 cg_sol_continuity_write(fn, B, Z, S_trace,
+    CGNS_ENUMV(Continuous));
+
+/* Case B: higher-order traces -- use InterpolationPoints
+ * with CPEX 0045 metadata for the face polynomial basis. */
+int S_trace_ho;
+cg_sol_write(fn, B, Z, "TraceSolution_HO",
+    CGNS_ENUMV(InterpolationPoints), &S_trace_ho);
+cg_sol_interpolation_order_write(fn, B, Z, S_trace_ho, 2, 0);
+cg_sol_continuity_write(fn, B, Z, S_trace_ho,
     CGNS_ENUMV(Continuous));
 \end{lstlisting}
 
@@ -1063,10 +1090,11 @@ int S;
 cg_sol_write(fn, B, Z, "FlowSolution_DG",
     CGNS_ENUMV(Vertex), &S);
 
-/* PointList defines the element-local DOF ordering.
+/* Navigate to the solution node, then write the PointList.
+ * cg_ptset_write operates on the current position set by cg_goto.
  * DataSize = nElems * nVertsPerElem (not nVerts). */
-cg_ptset_write(fn, B, Z, S,
-    CGNS_ENUMV(PointList),
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+cg_ptset_write(CGNS_ENUMV(PointList),
     (cgsize_t)(nElems * nVertsPerElem),
     point_list);
 
@@ -1092,6 +1120,140 @@ if (cont == CGNS_ENUMV(Discontinuous)) {
      * are independent -- do not average. */
 }
 \end{lstlisting}
+
+\subsection{Example 8: DiscreteData\_t with Discontinuous Error Indicator (C)}
+\label{ex:discrete}
+
+This example shows a DG error indicator stored in a
+\texttt{DiscreteData\_t} node.  The usage mirrors
+\texttt{FlowSolution\_t}; the only difference is the API prefix
+(\texttt{cg\_discrete\_} instead of \texttt{cg\_sol\_}).
+
+\begin{lstlisting}[language=C]
+/* Create a cell-centered discrete data node for error indicators */
+int D;
+cg_discrete_write(fn, B, Z, "ErrorIndicator", &D);
+cg_goto(fn, B, "Zone_t", Z, "DiscreteData_t", D, "end");
+cg_gridlocation_write(CGNS_ENUMV(CellCenter));
+
+/* Mark as discontinuous (element-local error estimates) */
+cg_discrete_continuity_write(fn, B, Z, D,
+    CGNS_ENUMV(Discontinuous));
+
+/* Write per-element error data */
+cg_goto(fn, B, "Zone_t", Z, "DiscreteData_t", D, "end");
+cg_array_write("ElementError", CGNS_ENUMV(RealDouble),
+    1, &nElems, error_data);
+\end{lstlisting}
+
+\subsection{Example 9: ZoneSubRegion\_t with Boundary Flux Data (C)}
+\label{ex:subreg}
+
+This example stores discontinuous boundary flux data on a
+\texttt{ZoneSubRegion\_t} that references a boundary condition
+region.
+
+\begin{lstlisting}[language=C]
+/* Create a sub-region referencing a BC */
+int SR;
+cg_subreg_bcname_write(fn, B, Z, "WallFluxes",
+    CellDimension - 1, "Wall_BC", &SR);
+
+/* Mark as discontinuous (each face owns its own flux values) */
+cg_subreg_continuity_write(fn, B, Z, SR,
+    CGNS_ENUMV(Discontinuous));
+
+/* Write flux data on the sub-region */
+cg_goto(fn, B, "Zone_t", Z, "ZoneSubRegion_t", SR, "end");
+cg_array_write("HeatFlux", CGNS_ENUMV(RealDouble),
+    1, &nBCFaces, heat_flux);
+\end{lstlisting}
+
+\subsection{Example 10: Solver Restart with Continuity-Aware Read (C)}
+\label{ex:restart}
+
+A solver reading a restart file must reconstruct the solution state
+correctly based on the continuity.  This example shows how a restart
+reader uses the continuity metadata to dispatch between shared-DOF
+and element-local reconstruction.
+
+\begin{lstlisting}[language=C]
+/* Read solution metadata */
+char sol_name[CGIO_MAX_NAME_LENGTH+1];
+CGNS_ENUMT(GridLocation_t) loc;
+cg_sol_info(fn, B, Z, S, sol_name, &loc);
+
+CGNS_ENUMT(SolutionContinuity_t) cont;
+cg_sol_continuity_read(fn, B, Z, S, &cont);
+
+/* Read the field data */
+cg_field_read(fn, B, Z, S, "Pressure",
+    CGNS_ENUMV(RealDouble), range_min, range_max,
+    pressure_buf);
+
+/* Reconstruct based on continuity */
+if (cont == CGNS_ENUMV(Continuous)) {
+    /* DOFs are shared at mesh vertices/edges/faces.
+     * Map directly to the global DOF vector. */
+    reconstruct_continuous(pressure_buf, loc, mesh);
+} else if (cont == CGNS_ENUMV(Discontinuous)) {
+    /* DOFs are element-local.  Each element owns its
+     * own copy of values at shared interfaces. */
+    reconstruct_discontinuous(pressure_buf, loc, mesh);
+} else {
+    /* Null: legacy file.  Infer from data size or
+     * assume continuous for backward compatibility. */
+    reconstruct_legacy(pressure_buf, loc, mesh);
+}
+\end{lstlisting}
+
+\subsection{Example 11: FSI Coupling --- Structural and Fluid Solutions (C)}
+\label{ex:fsi}
+
+In Fluid-Structure Interaction (FSI) applications, a single zone may
+carry both fluid and structural solution fields with different
+continuity types.  A continuous FEM structural solver stores shared
+displacement DOFs, while a DG fluid solver stores element-local flow
+variables.  Separate \texttt{FlowSolution\_t} nodes with distinct
+continuity metadata allow coupling frameworks to correctly interpret
+and transfer each field.
+
+\begin{lstlisting}[language=C]
+/* Structural solution: continuous FEM displacements */
+int S_struct;
+cg_sol_write(fn, B, Z, "StructuralDisplacement",
+    CGNS_ENUMV(Vertex), &S_struct);
+cg_sol_continuity_write(fn, B, Z, S_struct,
+    CGNS_ENUMV(Continuous));
+cg_field_write(fn, B, Z, S_struct, CGNS_ENUMV(RealDouble),
+    "DisplacementX", disp_x, &F);
+cg_field_write(fn, B, Z, S_struct, CGNS_ENUMV(RealDouble),
+    "DisplacementY", disp_y, &F);
+
+/* Fluid solution: discontinuous DG flow field */
+int S_fluid;
+cg_sol_write(fn, B, Z, "FluidSolution",
+    CGNS_ENUMV(InterpolationPoints), &S_fluid);
+cg_sol_interpolation_order_write(fn, B, Z, S_fluid, 3, 0);
+cg_sol_continuity_write(fn, B, Z, S_fluid,
+    CGNS_ENUMV(Discontinuous));
+cg_field_write(fn, B, Z, S_fluid, CGNS_ENUMV(RealDouble),
+    "Pressure", pressure, &F);
+cg_field_write(fn, B, Z, S_fluid, CGNS_ENUMV(RealDouble),
+    "VelocityX", vel_x, &F);
+
+/* A coupling framework reading this zone can query
+ * each FlowSolution_t's continuity to determine the
+ * correct interpolation and transfer strategy:
+ *   - Continuous fields: global shared-DOF interpolation
+ *   - Discontinuous fields: element-local projection */
+\end{lstlisting}
+
+The same pattern applies when the structural and fluid domains are in
+separate zones.  The continuity metadata on each zone's
+\texttt{FlowSolution\_t} nodes enables the coupling framework to
+apply the correct inter-code transfer operators without relying on
+naming conventions or external configuration.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{SIDS Impact}
@@ -1211,6 +1373,28 @@ existing CGNS conventions and SIDS precedent.
   with \texttt{GridLocation\_t = CellCenter} should not be used.
   \texttt{cgnscheck} should issue a warning when this combination is
   encountered.
+
+\item \textbf{Recommended \texttt{cgnscheck} validation rules.}
+  The following consistency checks are recommended for
+  \texttt{cgnscheck} and similar validation tools:
+
+  \begin{description}[leftmargin=2em]
+  \item[Warning:] \texttt{SolutionContinuity\_t = Continuous} with
+    \texttt{GridLocation\_t = CellCenter} --- semantically inconsistent
+    since cell-centered data is inherently element-local
+    (Design Decision~3 above).
+
+  \item[Error:] \texttt{SolutionContinuity\_t = Discontinuous} with
+    \texttt{GridLocation\_t = Vertex} and \emph{no}
+    \texttt{PointList} --- the SIDS \texttt{DataSize} formula yields
+    $\texttt{VertexSize}$ (the shared-vertex count), which cannot
+    represent the larger element-local DOF count
+    (Section~\ref{sec:shared-vertex-layout}).
+
+  \item[Warning:] \texttt{SolutionContinuity\_t} value outside the
+    range $[0, \texttt{NofValidSolutionContinuity})$ --- invalid
+    enumeration value.
+  \end{description}
 
 \end{enumerate}
 
