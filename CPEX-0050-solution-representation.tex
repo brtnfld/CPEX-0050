@@ -290,14 +290,17 @@ The proposal introduces:
 typedef enum {
   CGNS_ENUMV( SolutionContinuityNull )        = CG_Null,
   CGNS_ENUMV( SolutionContinuityUserDefined )  = CG_UserDefined,
-  CGNS_ENUMV( Continuous )                          = 2,
-  CGNS_ENUMV( Discontinuous )                       = 3
+  CGNS_ENUMV( SolutionContinuous )                  = 2,
+  CGNS_ENUMV( SolutionDiscontinuous )               = 3
 } CGNS_ENUMT( SolutionContinuity_t );
 
 #define NofValidSolutionContinuity 4
 
 extern CGNSDLL const char *
     SolutionContinuityName[NofValidSolutionContinuity];
+
+CGNSDLL const char *cg_SolutionContinuityName(
+    CGNS_ENUMT(SolutionContinuity_t) type);
 \end{lstlisting}
 
 The enumeration values are:
@@ -310,14 +313,14 @@ The enumeration values are:
 \item[\texttt{SolutionContinuityUserDefined}] Application-defined
   continuity not covered by the standard values.
 
-\item[\texttt{Continuous}] The solution field is
+\item[\texttt{SolutionContinuous}] The solution field is
   globally $C^0$-continuous (or higher) across element interfaces.
   DOFs at shared mesh entities (vertices, edges, faces) are shared
   between adjacent elements.  Typical of: Continuous Galerkin FEM,
   $C^0$ spectral element methods, isogeometric analysis with
   $C^0$~junctions.
 
-\item[\texttt{Discontinuous}] The solution field is
+\item[\texttt{SolutionDiscontinuous}] The solution field is
   element-local with no continuity enforced across element interfaces
   ($C^{-1}$).  Each element owns independent DOFs, including at shared
   geometric locations.  Typical of: Discontinuous Galerkin methods,
@@ -326,35 +329,35 @@ The enumeration values are:
 
 \subsubsection{Why Two Values Are Sufficient}
 
-The \texttt{Continuous}/\texttt{Discontinuous} binary classification
-is deliberate.  Methods that appear to require finer distinctions are
-already handled by the existing two values combined with standard CGNS
-patterns:
+The \texttt{SolutionContinuous}/\texttt{SolutionDiscontinuous} binary
+classification is deliberate.  Methods that appear to require finer
+distinctions are already handled by the existing two values combined
+with standard CGNS patterns:
 
 \begin{description}[leftmargin=2em]
 \item[HDG and mixed-continuity methods] use both element-local
   volume DOFs and globally continuous trace DOFs.  These are stored as
   separate \texttt{FlowSolution\_t} nodes---one marked
-  \texttt{Discontinuous}, the other \texttt{Continuous}---following the
-  same pattern CGNS already uses to separate fields at different
-  \texttt{GridLocation\_t} values.  A dedicated
-  \texttt{MixedContinuity} value would conflate two distinct data
-  layouts into a single node, making it harder, not easier, for
+  \texttt{SolutionDiscontinuous}, the other
+  \texttt{SolutionContinuous}---following the same pattern CGNS already
+  uses to separate fields at different \texttt{GridLocation\_t} values.
+  A dedicated \texttt{MixedContinuity} value would conflate two distinct
+  data layouts into a single node, making it harder, not easier, for
   post-processors to interpret the data.
 
 \item[Penalized / weakly-continuous DG methods] enforce continuity
   through penalty terms in the variational formulation, but the data
   layout remains element-local: each element owns its own DOFs.  The
-  correct label is \texttt{Discontinuous}.  ``Weak continuity'' is a
-  solver-internal property of the numerical method, not a property of
-  the stored data that readers and post-processors need to act on.
+  correct label is \texttt{SolutionDiscontinuous}.  ``Weak continuity''
+  is a solver-internal property of the numerical method, not a property
+  of the stored data that readers and post-processors need to act on.
 
 \item[Isogeometric analysis ($C^k$, $k \geq 1$)] uses basis functions
   with higher-than-$C^0$ smoothness, but the data layout is still
   globally continuous with shared DOFs at patch interfaces.  The
-  correct label is \texttt{Continuous}.  The smoothness order $k$ is a
-  property of the basis, not of the data layout; it belongs in the
-  interpolation metadata (CPEX~0045), not in the continuity type.
+  correct label is \texttt{SolutionContinuous}.  The smoothness order
+  $k$ is a property of the basis, not of the data layout; it belongs in
+  the interpolation metadata (CPEX~0045), not in the continuity type.
 \end{description}
 
 The \texttt{SolutionContinuityUserDefined} value remains available
@@ -413,7 +416,7 @@ DiscreteData\_t< int CellDimension, int IndexDimension, \\
 \quad \{ \\
 \quad ... (existing children unchanged) ... \\
 \\
-	+ \quad \textcolor{red}{SolutionContinuity\_t SolutionContinuity} ; \qquad\quad\;\; (o) \\
+\quad + \quad \textcolor{red}{SolutionContinuity\_t SolutionContinuity} ; \qquad\quad\;\; (o) \\
 \quad \}
 \end{sidsnode}
 
@@ -424,13 +427,11 @@ or fields on sub-regions where the continuous/discontinuous distinction
 applies equally:
 
 \begin{sidsnode}{ZoneSubRegion\_t (amended, SIDS Section 7.9)}
-ZoneSubRegion\_t< int CellDimension, int IndexDimension, \\
-\qquad\qquad\quad int VertexSize[IndexDimension], \\
-\qquad\qquad\quad int CellSize[IndexDimension] > := \\
+ZoneSubRegion\_t< int RegionCellDimension > := \\
 \quad \{ \\
 \quad ... (existing children unchanged) ... \\
 \\
-	+ \quad \textcolor{red}{SolutionContinuity\_t SolutionContinuity} ; \qquad\quad\;\; (o) \\
+\quad + \quad \textcolor{red}{SolutionContinuity\_t SolutionContinuity} ; \qquad\quad\;\; (o) \\
 \quad \}
 \end{sidsnode}
 
@@ -527,6 +528,14 @@ int cg_subreg_continuity_write(
 int cg_subreg_continuity_read(
     int fn, int B, int Z, int SR,
     CGNS_ENUMT(SolutionContinuity_t) *type);
+
+/*
+ * Return the string name for a SolutionContinuity_t value.
+ * Matches the convention of cg_GridLocationName, cg_DataTypeName, etc.
+ * Returns NULL for out-of-range values.
+ */
+CGNSDLL const char *cg_SolutionContinuityName(
+    CGNS_ENUMT(SolutionContinuity_t) type);
 \end{lstlisting}
 
 \textbf{Behavior:}
@@ -549,36 +558,36 @@ int cg_subreg_continuity_read(
 \begin{lstlisting}[language=Fortran]
 ! FlowSolution_t
 subroutine cg_sol_continuity_write_f( &
-    fn, B, Z, S, type, ier)
-  integer, intent(in) :: fn, B, Z, S, type
+    fn, B, Z, S, continuity, ier)
+  integer, intent(in) :: fn, B, Z, S, continuity
   integer, intent(out) :: ier
 
 subroutine cg_sol_continuity_read_f( &
-    fn, B, Z, S, type, ier)
+    fn, B, Z, S, continuity, ier)
   integer, intent(in) :: fn, B, Z, S
-  integer, intent(out) :: type, ier
+  integer, intent(out) :: continuity, ier
 
 ! DiscreteData_t
 subroutine cg_discrete_continuity_write_f( &
-    fn, B, Z, D, type, ier)
-  integer, intent(in) :: fn, B, Z, D, type
+    fn, B, Z, D, continuity, ier)
+  integer, intent(in) :: fn, B, Z, D, continuity
   integer, intent(out) :: ier
 
 subroutine cg_discrete_continuity_read_f( &
-    fn, B, Z, D, type, ier)
+    fn, B, Z, D, continuity, ier)
   integer, intent(in) :: fn, B, Z, D
-  integer, intent(out) :: type, ier
+  integer, intent(out) :: continuity, ier
 
 ! ZoneSubRegion_t
 subroutine cg_subreg_continuity_write_f( &
-    fn, B, Z, SR, type, ier)
-  integer, intent(in) :: fn, B, Z, SR, type
+    fn, B, Z, SR, continuity, ier)
+  integer, intent(in) :: fn, B, Z, SR, continuity
   integer, intent(out) :: ier
 
 subroutine cg_subreg_continuity_read_f( &
-    fn, B, Z, SR, type, ier)
+    fn, B, Z, SR, continuity, ier)
   integer, intent(in) :: fn, B, Z, SR
-  integer, intent(out) :: type, ier
+  integer, intent(out) :: continuity, ier
 \end{lstlisting}
 
 \subsection{Internal Data Structure Changes}
@@ -732,9 +741,15 @@ int cg_sol_continuity_write(int fn, int B, int Z, int S,
     if (sol == NULL) return CG_ERROR;
 
     /* Validate enum value */
-    if (type < 0 || type >= NofValidSolutionContinuity) {
-        cgi_error("Invalid SolutionContinuity value: %d", type);
-        return CG_ERROR;
+    switch (type) {
+        case CGNS_ENUMV(SolutionContinuityNull):
+        case CGNS_ENUMV(SolutionContinuityUserDefined):
+        case CGNS_ENUMV(SolutionContinuous):
+        case CGNS_ENUMV(SolutionDiscontinuous):
+            break;
+        default:
+            cgi_error("Invalid SolutionContinuity value: %d", (int)type);
+            return CG_ERROR;
     }
 
     /* Delete existing node if writing Null */
@@ -797,7 +812,7 @@ one per element; readers must not average or conflate them.
 
 The correct CGNS encoding for this pattern is
 \texttt{GridLocation\_t = Vertex} combined with
-\texttt{SolutionContinuity\_t = Discontinuous} and a
+\texttt{SolutionContinuity\_t = SolutionDiscontinuous} and a
 \texttt{PointList} that lists every element-vertex pair explicitly
 (repeated vertex indices are expected and meaningful).  The
 \texttt{SolutionContinuity\_t} node is the machine-readable flag that
@@ -825,8 +840,8 @@ specifically the correct choice when the DOF positions coincide with
 mesh vertices and the shared-vertex mesh connectivity is to be
 preserved.
 
-\texttt{GridLocation\_t = Vertex} with \texttt{Discontinuous} and
-\emph{no} \texttt{PointList} is not valid: the SIDS
+\texttt{GridLocation\_t = Vertex} with \texttt{SolutionDiscontinuous}
+and \emph{no} \texttt{PointList} is not valid: the SIDS
 \texttt{DataSize} formula for \texttt{Vertex} yields
 $\texttt{DataSize} = \texttt{VertexSize}$ (the shared-vertex count),
 which cannot represent the larger element-local DOF count.
@@ -834,7 +849,7 @@ Similarly, \texttt{PointRange} is not suitable for this case because
 a contiguous range of vertex indices cannot express the element-local
 repetition of shared vertices; only \texttt{PointList} provides the
 necessary per-element DOF ordering.
-\texttt{GridLocation\_t = CellCenter} with \texttt{Discontinuous}
+\texttt{GridLocation\_t = CellCenter} with \texttt{SolutionDiscontinuous}
 remains valid since cell-centered data is inherently one value per
 element with no shared-entity ambiguity.
 
@@ -843,11 +858,47 @@ This approach extends naturally to mixed-element meshes
 \texttt{PointList} simply lists vertex indices for each element in
 element order; elements with different vertex counts contribute
 different numbers of entries.  The \texttt{SolutionContinuity\_t =
-Discontinuous} flag tells readers that repeated vertex indices
+SolutionDiscontinuous} flag tells readers that repeated vertex indices
 represent independent DOFs regardless of element type heterogeneity.
+
+\textbf{SIDS Amendment (PointList semantics under Discontinuous solutions):}
+When \texttt{SolutionContinuity\_t = SolutionDiscontinuous} and a
+\texttt{PointList} is present under \texttt{FlowSolution\_t} with
+\texttt{GridLocation\_t = Vertex}, repeated vertex indices are
+permitted and represent element-local DOFs.  The DOF-to-element
+mapping is defined by traversal of the zone's \texttt{Elements\_t}
+sections in ascending section index order, then by each section's
+connectivity array order.  Solution array position $i$ corresponds to
+the $i$-th entry of the \texttt{PointList} under this traversal.
+This is an explicit amendment to the \texttt{PointList} description in
+SIDS~§7.7 for this case; repeated indices under a continuous solution
+remain undefined and invalid.
+
+\textbf{Note:} For element-local DOFs at non-vertex positions, or
+when the implicit element-ordering covenant above is inconvenient,
+\texttt{GridLocation\_t = InterpolationPoints} with
+\texttt{SolutionInterpolation\_t} from CPEX~0045 is the preferred
+encoding and does not require repeated indices.
 
 See Example~\ref{ex:shared-vertex-dg} for the complete C encoding
 of this pattern.
+
+%% ─────────────────────────────────────────────────────────────────────────
+\subsection{Interaction with \texttt{Rind\_t} (Ghost Layers)}
+\label{sec:rind-interaction}
+
+\texttt{SolutionContinuity\_t} applies uniformly to the entire
+solution field, including any rind (ghost) entries declared by
+\texttt{Rind\_t}.  A \texttt{SolutionDiscontinuous} label means that
+all data entries---interior and rind alike---are element-local: each
+rind entry belongs to one element and must not be interpreted as a
+shared vertex value.  DG solvers that use ghost layers for MPI halo
+exchange may therefore store element-local rind DOFs in the standard
+way; the \texttt{SolutionDiscontinuous} label covers them.  Rind
+entries of a \texttt{SolutionContinuous} solution retain their usual
+shared-DOF semantics.  No special treatment of the rind is required
+beyond what \texttt{Rind\_t} already specifies; the continuity label
+is consistent across the full data array.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Interaction with CPEX 0045 (Higher-Order Elements)}
@@ -923,6 +974,14 @@ layout when DG DOFs coincide with shared mesh vertices.
   This is an ABI change requiring recompilation of code that directly
   accesses the internal structures.  The public API is purely additive
   (new functions, new enum), so no existing function signatures change.
+
+\item \textbf{Parallel I/O (\texttt{cgp\_*}):} The
+  \texttt{SolutionContinuity} metadata node is a small scalar
+  child of \texttt{FlowSolution\_t} and carries no per-element data.
+  It is written and read via the standard collective-write /
+  independent-read model, identical to how \texttt{GridLocation} is
+  handled in the parallel MLL.  No new \texttt{cgp\_*} variants are
+  required.
 \end{itemize}
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -939,7 +998,7 @@ cg_sol_write(fn, B, Z, "FlowSolution", CGNS_ENUMV(Vertex), &S);
 
 /* Mark as continuous (CG FEM) */
 cg_sol_continuity_write(fn, B, Z, S,
-    CGNS_ENUMV(Continuous));
+    CGNS_ENUMV(SolutionContinuous));
 
 /* Write solution data (one value per mesh vertex, shared) */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
@@ -960,7 +1019,7 @@ cg_sol_interpolation_order_write(fn, B, Z, S, 3, 0);
 
 /* Mark as discontinuous */
 cg_sol_continuity_write(fn, B, Z, S,
-    CGNS_ENUMV(Discontinuous));
+    CGNS_ENUMV(SolutionDiscontinuous));
 
 /* Write element-local DOFs */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
@@ -975,11 +1034,11 @@ CGNS_ENUMT(SolutionContinuity_t) repr;
 cg_sol_continuity_read(fn, B, Z, S, &repr);
 
 switch (repr) {
-case CGNS_ENUMV(Continuous):
+case CGNS_ENUMV(SolutionContinuous):
     /* Shared DOFs: interpolate using global mesh connectivity */
     visualize_continuous(fn, B, Z, S);
     break;
-case CGNS_ENUMV(Discontinuous):
+case CGNS_ENUMV(SolutionDiscontinuous):
     /* Element-local DOFs: render per-element, preserve jumps */
     visualize_discontinuous(fn, B, Z, S);
     break;
@@ -999,7 +1058,7 @@ int S_vol;
 cg_sol_write(fn, B, Z, "VolumeSolution",
     CGNS_ENUMV(InterpolationPoints), &S_vol);
 cg_sol_continuity_write(fn, B, Z, S_vol,
-    CGNS_ENUMV(Discontinuous));
+    CGNS_ENUMV(SolutionDiscontinuous));
 
 /* Trace DOFs on element faces (continuous on skeleton).
  * Case A: p=0 traces (one DOF per face) -- use FaceCenter. */
@@ -1007,7 +1066,7 @@ int S_trace;
 cg_sol_write(fn, B, Z, "TraceSolution",
     CGNS_ENUMV(FaceCenter), &S_trace);
 cg_sol_continuity_write(fn, B, Z, S_trace,
-    CGNS_ENUMV(Continuous));
+    CGNS_ENUMV(SolutionContinuous));
 
 /* Case B: higher-order traces -- use InterpolationPoints
  * with CPEX 0045 metadata for the face polynomial basis. */
@@ -1016,7 +1075,7 @@ cg_sol_write(fn, B, Z, "TraceSolution_HO",
     CGNS_ENUMV(InterpolationPoints), &S_trace_ho);
 cg_sol_interpolation_order_write(fn, B, Z, S_trace_ho, 2, 0);
 cg_sol_continuity_write(fn, B, Z, S_trace_ho,
-    CGNS_ENUMV(Continuous));
+    CGNS_ENUMV(SolutionContinuous));
 \end{lstlisting}
 
 \subsection{Example 5: Fortran Usage}
@@ -1028,11 +1087,11 @@ integer :: S, ier, repr
 ! Write a continuous solution
 call cg_sol_write_f(fn, B, Z, 'FlowSolution', Vertex, S, ier)
 call cg_sol_continuity_write_f(fn, B, Z, S, &
-    Continuous, ier)
+    SolutionContinuous, ier)
 
 ! Read continuity
 call cg_sol_continuity_read_f(fn, B, Z, S, repr, ier)
-if (repr == Discontinuous) then
+if (repr == SolutionDiscontinuous) then
     ! Element-local interpolation
 end if
 \end{lstlisting}
@@ -1048,7 +1107,7 @@ cg_sol_write(fn, B, Z, "FlowSolution",
 
 /* Explicitly mark as discontinuous */
 cg_sol_continuity_write(fn, B, Z, S,
-    CGNS_ENUMV(Discontinuous));
+    CGNS_ENUMV(SolutionDiscontinuous));
 \end{lstlisting}
 
 This example demonstrates that the continuity metadata is useful
@@ -1084,24 +1143,22 @@ for (int e = 0; e < nElems; e++)
         point_list[e * nVertsPerElem + v] =
             element_connectivity[e][v];  /* 1-based vertex index */
 
-/* Create solution node: Vertex location preserves shared-mesh
- * connectivity for geometry operations. */
-int S;
-cg_sol_write(fn, B, Z, "FlowSolution_DG",
-    CGNS_ENUMV(Vertex), &S);
-
-/* Navigate to the solution node, then write the PointList.
- * cg_ptset_write operates on the current position set by cg_goto.
+/* Create solution node with PointList using the idiomatic
+ * cg_sol_ptset_write: Vertex location preserves shared-mesh
+ * connectivity for geometry operations.
  * DataSize = nElems * nVertsPerElem (not nVerts). */
-cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
-cg_ptset_write(CGNS_ENUMV(PointList),
+int S;
+cg_sol_ptset_write(fn, B, Z, "FlowSolution_DG",
+    CGNS_ENUMV(Vertex),
+    CGNS_ENUMV(PointList),
     (cgsize_t)(nElems * nVertsPerElem),
-    point_list);
+    point_list, &S);
 
 /* Mark as discontinuous: values at repeated vertex indices
- * are independent across elements. */
+ * are independent across elements, ordered by Elements_t
+ * section index then connectivity order. */
 cg_sol_continuity_write(fn, B, Z, S,
-    CGNS_ENUMV(Discontinuous));
+    CGNS_ENUMV(SolutionDiscontinuous));
 
 /* Write element-local solution data */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
@@ -1114,7 +1171,7 @@ A reader distinguishes this from a continuous solution as follows:
 CGNS_ENUMT(SolutionContinuity_t) cont;
 cg_sol_continuity_read(fn, B, Z, S, &cont);
 
-if (cont == CGNS_ENUMV(Discontinuous)) {
+if (cont == CGNS_ENUMV(SolutionDiscontinuous)) {
     /* PointList entries are element-local DOF indices.
      * Values at the same vertex index from different elements
      * are independent -- do not average. */
@@ -1138,7 +1195,7 @@ cg_gridlocation_write(CGNS_ENUMV(CellCenter));
 
 /* Mark as discontinuous (element-local error estimates) */
 cg_discrete_continuity_write(fn, B, Z, D,
-    CGNS_ENUMV(Discontinuous));
+    CGNS_ENUMV(SolutionDiscontinuous));
 
 /* Write per-element error data */
 cg_goto(fn, B, "Zone_t", Z, "DiscreteData_t", D, "end");
@@ -1156,12 +1213,14 @@ region.
 \begin{lstlisting}[language=C]
 /* Create a sub-region referencing a BC */
 int SR;
+/* CellDimension is the zone's cell dimension (e.g., 3 for a 3-D volume
+ * zone), so CellDimension - 1 is the face dimension. */
 cg_subreg_bcname_write(fn, B, Z, "WallFluxes",
     CellDimension - 1, "Wall_BC", &SR);
 
 /* Mark as discontinuous (each face owns its own flux values) */
 cg_subreg_continuity_write(fn, B, Z, SR,
-    CGNS_ENUMV(Discontinuous));
+    CGNS_ENUMV(SolutionDiscontinuous));
 
 /* Write flux data on the sub-region */
 cg_goto(fn, B, "Zone_t", Z, "ZoneSubRegion_t", SR, "end");
@@ -1186,17 +1245,19 @@ cg_sol_info(fn, B, Z, S, sol_name, &loc);
 CGNS_ENUMT(SolutionContinuity_t) cont;
 cg_sol_continuity_read(fn, B, Z, S, &cont);
 
-/* Read the field data */
+/* Read the field data.  In a generic restart loop, call
+ * cg_field_info(fn,B,Z,S,F,...) first to discover field names
+ * and types before calling cg_field_read. */
 cg_field_read(fn, B, Z, S, "Pressure",
     CGNS_ENUMV(RealDouble), range_min, range_max,
     pressure_buf);
 
 /* Reconstruct based on continuity */
-if (cont == CGNS_ENUMV(Continuous)) {
+if (cont == CGNS_ENUMV(SolutionContinuous)) {
     /* DOFs are shared at mesh vertices/edges/faces.
      * Map directly to the global DOF vector. */
     reconstruct_continuous(pressure_buf, loc, mesh);
-} else if (cont == CGNS_ENUMV(Discontinuous)) {
+} else if (cont == CGNS_ENUMV(SolutionDiscontinuous)) {
     /* DOFs are element-local.  Each element owns its
      * own copy of values at shared interfaces. */
     reconstruct_discontinuous(pressure_buf, loc, mesh);
@@ -1224,7 +1285,7 @@ int S_struct;
 cg_sol_write(fn, B, Z, "StructuralDisplacement",
     CGNS_ENUMV(Vertex), &S_struct);
 cg_sol_continuity_write(fn, B, Z, S_struct,
-    CGNS_ENUMV(Continuous));
+    CGNS_ENUMV(SolutionContinuous));
 cg_field_write(fn, B, Z, S_struct, CGNS_ENUMV(RealDouble),
     "DisplacementX", disp_x, &F);
 cg_field_write(fn, B, Z, S_struct, CGNS_ENUMV(RealDouble),
@@ -1236,7 +1297,7 @@ cg_sol_write(fn, B, Z, "FluidSolution",
     CGNS_ENUMV(InterpolationPoints), &S_fluid);
 cg_sol_interpolation_order_write(fn, B, Z, S_fluid, 3, 0);
 cg_sol_continuity_write(fn, B, Z, S_fluid,
-    CGNS_ENUMV(Discontinuous));
+    CGNS_ENUMV(SolutionDiscontinuous));
 cg_field_write(fn, B, Z, S_fluid, CGNS_ENUMV(RealDouble),
     "Pressure", pressure, &F);
 cg_field_write(fn, B, Z, S_fluid, CGNS_ENUMV(RealDouble),
@@ -1278,6 +1339,16 @@ naming conventions or external configuration.
 \item \textbf{ZoneSubRegion\_t amendment:} The
   \texttt{ZoneSubRegion\_t} node definition (SIDS Section~7.9) is
   similarly amended.
+
+\item \textbf{PointList semantics amendment:} The description of
+  \texttt{PointList} under \texttt{FlowSolution\_t} in SIDS~§7.7 is
+  amended to permit repeated vertex indices when
+  \texttt{SolutionContinuity\_t = SolutionDiscontinuous}.  Repeated
+  indices in that context represent element-local DOFs and are not
+  malformed duplicates; the DOF-to-element mapping follows ascending
+  \texttt{Elements\_t} section index order, then connectivity order
+  within each section.  This amendment does not affect \texttt{PointList}
+  semantics under any other condition.
 
 \item No existing SIDS node types, enumerations, or conventions are
   modified or removed.
@@ -1358,18 +1429,18 @@ existing CGNS conventions and SIDS precedent.
   \texttt{FlowSolution\_t} nodes, exactly as they would use separate
   nodes for fields at different \texttt{GridLocation\_t} values.
 
-\item \textbf{\texttt{CellCenter} + \texttt{Continuous}: permitted
+\item \textbf{\texttt{CellCenter} + \texttt{SolutionContinuous}: permitted
   but semantically inconsistent.}
   The MLL does \emph{not} enforce consistency between
   \texttt{SolutionContinuity\_t} and \texttt{GridLocation\_t}.
   A \texttt{CellCenter} solution is inherently element-local, making
-  \texttt{Continuous} semantically contradictory, but the library
+  \texttt{SolutionContinuous} semantically contradictory, but the library
   shall not reject such combinations.  This follows the established
   CGNS convention of being permissive in what is accepted: the
   standard documents correct usage; validation is delegated to
   application-level tools such as \texttt{cgnscheck}.
 
-  \textbf{Convention:} \texttt{SolutionContinuity\_t = Continuous}
+  \textbf{Convention:} \texttt{SolutionContinuity\_t = SolutionContinuous}
   with \texttt{GridLocation\_t = CellCenter} should not be used.
   \texttt{cgnscheck} should issue a warning when this combination is
   encountered.
@@ -1379,12 +1450,12 @@ existing CGNS conventions and SIDS precedent.
   \texttt{cgnscheck} and similar validation tools:
 
   \begin{description}[leftmargin=2em]
-  \item[Warning:] \texttt{SolutionContinuity\_t = Continuous} with
+  \item[Warning:] \texttt{SolutionContinuity\_t = SolutionContinuous} with
     \texttt{GridLocation\_t = CellCenter} --- semantically inconsistent
     since cell-centered data is inherently element-local
     (Design Decision~3 above).
 
-  \item[Error:] \texttt{SolutionContinuity\_t = Discontinuous} with
+  \item[Error:] \texttt{SolutionContinuity\_t = SolutionDiscontinuous} with
     \texttt{GridLocation\_t = Vertex} and \emph{no}
     \texttt{PointList} --- the SIDS \texttt{DataSize} formula yields
     $\texttt{VertexSize}$ (the shared-vertex count), which cannot
@@ -1408,9 +1479,10 @@ existing CGNS conventions and SIDS precedent.
 \textbf{Symbol} & \textbf{Description} \\
 \midrule
 \endhead
-\texttt{SolutionContinuity\_t} & New enumeration type: \texttt{Null}, \texttt{UserDefined}, \texttt{Continuous}, \texttt{Discontinuous}. \\
+\texttt{SolutionContinuity\_t} & New enumeration type: \texttt{Null}, \texttt{UserDefined}, \texttt{SolutionContinuous}, \texttt{SolutionDiscontinuous}. \\
 \texttt{SolutionContinuityName} & String table for the enumeration values. \\
 \texttt{NofValidSolutionContinuity} & Count of valid enumeration values (4). \\
+\texttt{cg\_SolutionContinuityName} & C: return the string name for a \texttt{SolutionContinuity\_t} value (mirrors \texttt{cg\_GridLocationName}). \\
 \texttt{cg\_sol\_continuity\_write} & C: write solution continuity for a \texttt{FlowSolution\_t} node. \\
 \texttt{cg\_sol\_continuity\_read} & C: read solution continuity for a \texttt{FlowSolution\_t} node. \\
 \texttt{cg\_discrete\_continuity\_write} & C: write solution continuity for a \texttt{DiscreteData\_t} node. \\
