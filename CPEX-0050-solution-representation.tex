@@ -311,19 +311,35 @@ The enumeration values are:
   files and codes that do not set this field are unaffected.
 
 \item[\texttt{SolutionContinuityUserDefined}] Application-defined
-  continuity not covered by the standard values.
+  continuity not covered by the standard values.  When this value is
+  used, writers \emph{should} attach a \texttt{Descriptor\_t} child
+  node to the \texttt{FlowSolution\_t} (or
+  \texttt{DiscreteData\_t}/\texttt{ZoneSubRegion\_t}) named
+  \texttt{"SolutionContinuityDescription"} whose string value
+  identifies the continuity convention (e.g.,
+  \texttt{"HDG-trace"}, \texttt{"C1-spline"}).  This allows readers
+  to recognise the convention without requiring a separate
+  side-channel.
 
-\item[\texttt{SolutionContinuous}] The solution field is
-  globally $C^0$-continuous (or higher) across element interfaces.
-  DOFs at shared mesh entities (vertices, edges, faces) are shared
-  between adjacent elements.  Typical of: Continuous Galerkin FEM,
+\item[\texttt{SolutionContinuous}] DOFs at shared mesh entities
+  (vertices, edges, faces) are \emph{shared} between adjacent
+  elements: each shared entity carries exactly one value.  This is
+  a statement about \emph{storage and DOF-sharing semantics}, not
+  about the mathematical smoothness of the field.
+  Consequently, $H(\mathrm{div})$-conforming spaces
+  (e.g., Raviart--Thomas) and $H(\mathrm{curl})$-conforming spaces
+  (e.g., N\'{e}d\'{e}lec) should also use this label: their DOFs are
+  shared at element interfaces (normal-flux or tangential-component
+  DOFs respectively), even though the full vector field is not
+  pointwise $C^0$-continuous.  Typical of: Continuous Galerkin FEM,
   $C^0$ spectral element methods, isogeometric analysis with
-  $C^0$~junctions.
+  $C^0$~junctions, $H(\mathrm{div})$ and $H(\mathrm{curl})$
+  conforming spaces.
 
 \item[\texttt{SolutionDiscontinuous}] The solution field is
-  element-local with no continuity enforced across element interfaces
-  ($C^{-1}$).  Each element owns independent DOFs, including at shared
-  geometric locations.  Typical of: Discontinuous Galerkin methods,
+  element-local: each element owns independent DOFs, including at
+  shared geometric locations, and no interface DOF is shared between
+  adjacent elements.  Typical of: Discontinuous Galerkin methods,
   finite volume methods, $C^{-1}$ spectral element methods.
 \end{description}
 
@@ -364,6 +380,17 @@ CGNS patterns:
 The \texttt{SolutionContinuityUserDefined} value remains available
 as an escape hatch, consistent with CGNS convention for all
 enumeration types.
+
+\textbf{Scope note.}  \texttt{SolutionContinuity\_t} captures
+\emph{storage and DOF-sharing semantics} only---it answers
+``are interface DOFs shared or element-local?''  It does not
+encode the polynomial basis, smoothness order, patch topology,
+or support-radius metadata that IGA, meshless, or other
+non-standard discretizations may additionally require.  Those
+richer descriptions belong in \texttt{SolutionInterpolation\_t}
+(CPEX~0045) or in future extensions; this CPEX is intentionally
+scoped to the coarser, universally applicable
+continuous/discontinuous distinction.
 
 \subsection{SIDS Node Definition}
 \label{sec:sids-node}
@@ -1317,6 +1344,61 @@ separate zones.  The continuity metadata on each zone's
 apply the correct inter-code transfer operators without relying on
 naming conventions or external configuration.
 
+\subsection{Example 12: Conjugate Heat Transfer --- Perfect and Imperfect Thermal Contact (C)}
+\label{ex:cht}
+
+Conjugate heat transfer (CHT) simulations couple a fluid temperature
+field (often stored at cell centers or DG DOFs) with a solid
+temperature field (often stored as a continuous CG FEM solution).
+The continuity metadata disambiguates the two layouts and informs the
+coupling framework how to perform the interface transfer.
+
+\begin{lstlisting}[language=C]
+/* ---- Fluid zone: FV/DG temperature (discontinuous) ---- */
+int S_fluid;
+cg_sol_write(fn, B, fluidZone, "ThermalSolution",
+    CGNS_ENUMV(CellCenter), &S_fluid);
+cg_sol_continuity_write(fn, B, fluidZone, S_fluid,
+    CGNS_ENUMV(SolutionDiscontinuous));
+cg_field_write(fn, B, fluidZone, S_fluid,
+    CGNS_ENUMV(RealDouble), "Temperature", T_fluid, &F);
+
+/* ---- Solid zone: CG FEM temperature (continuous) ---- */
+int S_solid;
+cg_sol_write(fn, B, solidZone, "ThermalSolution",
+    CGNS_ENUMV(Vertex), &S_solid);
+cg_sol_continuity_write(fn, B, solidZone, S_solid,
+    CGNS_ENUMV(SolutionContinuous));
+cg_field_write(fn, B, solidZone, S_solid,
+    CGNS_ENUMV(RealDouble), "Temperature", T_solid, &F);
+
+/* ---- Interface heat flux on the solid side (face-local) ---- */
+int SR;
+cg_subreg_bcname_write(fn, B, solidZone, "FluidInterface",
+    CellDimension - 1, "FluidInterface_BC", &SR);
+cg_subreg_continuity_write(fn, B, solidZone, SR,
+    CGNS_ENUMV(SolutionDiscontinuous));
+cg_goto(fn, B, "Zone_t", solidZone,
+    "ZoneSubRegion_t", SR, "end");
+cg_array_write("HeatFlux", CGNS_ENUMV(RealDouble),
+    1, &nInterfaceFaces, heat_flux);
+\end{lstlisting}
+
+With \emph{perfect} thermal contact the fluid-side and solid-side
+interface temperatures are equal; the coupling framework can enforce
+this constraint knowing the solid temperature is
+\texttt{SolutionContinuous} (shared vertex DOFs) and the fluid
+temperature is \texttt{SolutionDiscontinuous} (cell-centered).
+
+With \emph{imperfect} thermal contact (finite thermal resistance),
+a temperature jump $\Delta T$ exists at the interface.  Each domain
+retains its own interface temperature, and the coupling framework
+applies the resistance relation $q = \Delta T / R$ between them.
+No change to the \texttt{SolutionContinuity\_t} labels is needed:
+the fluid and solid temperatures are stored and tagged independently
+in their respective zones, and the jump is an emergent result of the
+coupling rather than a property of either field's storage layout.
+
 %% ═════════════════════════════════════════════════════════════════════════
 \section{SIDS Impact}
 %% ═════════════════════════════════════════════════════════════════════════
@@ -1413,8 +1495,15 @@ existing CGNS conventions and SIDS precedent.
   continuity differs from the solution it constrains.  Should a
   future use case require per-BC continuity metadata (e.g.,
   coupling frameworks imposing boundary data in a different
-  continuity than the interior), it can be proposed as a
+  continuity than the interior, or interface conditions in CHT
+  simulations with imperfect thermal contact where a flux-jump
+  boundary condition is prescribed), it can be proposed as a
   separate, narrowly scoped CPEX without affecting this proposal.
+  The \texttt{ZoneSubRegion\_t} extension introduced here
+  partially addresses such cases: interface fluxes or
+  surface-local fields that require a continuity label can
+  be stored in a \texttt{ZoneSubRegion\_t} referencing the
+  relevant boundary condition (see Example~\ref{ex:cht}).
 
 \item \textbf{Per-solution-node granularity (not per-field).}
   The continuity applies at the \texttt{FlowSolution\_t} level,
