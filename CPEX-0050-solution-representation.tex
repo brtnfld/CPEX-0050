@@ -329,10 +329,11 @@ The enumeration values are:
 
 \subsubsection{Why Two Values Are Sufficient}
 
-The \texttt{SolutionContinuous}/\texttt{SolutionDiscontinuous} binary
-classification is deliberate.  Methods that appear to require finer
-distinctions are already handled by the existing two values combined
-with standard CGNS patterns:
+The binary continuous/discontinuous classification (enum values
+\texttt{SolutionContinuous} and \texttt{SolutionDiscontinuous}) is
+deliberate.  Methods that appear to require finer distinctions are
+already handled by the existing two values combined with standard
+CGNS patterns:
 
 \begin{description}[leftmargin=2em]
 \item[HDG and mixed-continuity methods] use both element-local
