@@ -326,14 +326,14 @@ The enumeration values are:
   elements: each shared entity carries exactly one value.  This is
   a statement about \emph{storage and DOF-sharing semantics}, not
   about the mathematical smoothness of the field.
-  Consequently, $H(\mathrm{div})$-conforming spaces
-  (e.g., Raviart--Thomas) and $H(\mathrm{curl})$-conforming spaces
+  Consequently, $\boldsymbol{H}(\operatorname{div})$-conforming spaces
+  (e.g., Raviart--Thomas) and $\boldsymbol{H}(\operatorname{curl})$-conforming spaces
   (e.g., N\'{e}d\'{e}lec) should also use this label: their DOFs are
   shared at element interfaces (normal-flux or tangential-component
   DOFs respectively), even though the full vector field is not
   pointwise $C^0$-continuous.  Typical of: Continuous Galerkin FEM,
   $C^0$ spectral element methods, isogeometric analysis with
-  $C^0$~junctions, $H(\mathrm{div})$ and $H(\mathrm{curl})$
+  $C^0$~junctions, $\boldsymbol{H}(\operatorname{div})$ and $\boldsymbol{H}(\operatorname{curl})$
   conforming spaces.
 
 \item[\texttt{SolutionDiscontinuous}] The solution field is
