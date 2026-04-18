@@ -313,10 +313,10 @@ The enumeration values are:
 \item[\texttt{SolutionContinuityUserDefined}] Application-defined
   continuity not covered by the standard values.  When this value is
   used, writers \emph{should} attach a \texttt{Descriptor\_t} child
-  node to the \texttt{FlowSolution\_t} (or
-  \texttt{DiscreteData\_t}/\texttt{ZoneSubRegion\_t}) named
-  \texttt{"SolutionContinuityDescription"} whose string value
-  identifies the continuity convention (e.g.,
+  node named \texttt{"ContinuityDescription"} to the parent
+  \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t}, or
+  \texttt{ZoneSubRegion\_t} node.  The string value should identify
+  the continuity convention (e.g.,
   \texttt{"HDG-trace"}, \texttt{"C1-spline"}).  This allows readers
   to recognise the convention without requiring a separate
   side-channel.
