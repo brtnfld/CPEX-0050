@@ -1,0 +1,23 @@
+CPEX-0050-solution-representation.tex
+  e8fe3142ec56ae42 144-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "f4da9adeab03408b7930de0f1f4f8c1ab6d8ec1d",
+  "prompts": {
+    "e8fe3142ec56ae42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "16d147da-1e5e-47e8-be53-92e9644ea931",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "M. Scot Breitenfeld",
+      "messages": [],
+      "total_additions": 61,
+      "total_deletions": 55,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}
