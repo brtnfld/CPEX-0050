@@ -141,15 +141,18 @@ MLL Status       & proposed \\
 
 This CPEX proposes adding a \texttt{SolutionContinuity\_t}
 enumeration and corresponding SIDS node to the CGNS standard, enabling
-CGNS files to record whether solution data uses a continuous or
-discontinuous field continuity.  This distinction---most commonly
-associated with Continuous Galerkin (CG) and Discontinuous Galerkin
-(DG) finite element methods---is fundamental to the correct
-interpretation of solution data but is not captured by any existing
-CGNS construct.  The proposal is general: it applies at any polynomial
-order, to any discretization family (finite element, finite volume,
-spectral element, etc.), and interacts naturally with the higher-order
-solution infrastructure introduced by CPEX~0045.
+CGNS files to explicitly record whether a solution field is continuous
+or discontinuous.  Most CFD codes use finite volume (FV)
+discretizations, which are inherently discontinuous---one value per
+cell with no continuity enforced across faces.  Discontinuous Galerkin
+(DG) methods share this property, while continuous Galerkin (CG)
+finite element methods produce globally continuous fields.  This
+distinction is fundamental to the correct interpretation of solution
+data but is not captured by any existing CGNS construct.  The proposal
+is general: it applies at any polynomial order, to any discretization
+family (finite volume, finite element, spectral element, etc.), and
+interacts naturally with the higher-order solution infrastructure
+introduced by CPEX~0045.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Motivation and Rationale}
