@@ -139,20 +139,16 @@ MLL Status       & proposed \\
 \section{Abstract}
 %% ═════════════════════════════════════════════════════════════════════════
 
-This CPEX proposes adding a \texttt{SolutionContinuity\_t}
-enumeration and corresponding SIDS node to the CGNS standard, enabling
-CGNS files to explicitly record whether a solution field is continuous
-or discontinuous.  Most CFD codes use finite volume (FV)
-discretizations, which are inherently discontinuous---one value per
-cell with no continuity enforced across faces.  Discontinuous Galerkin
-(DG) methods share this property, while continuous Galerkin (CG)
-finite element methods produce globally continuous fields.  This
-distinction is fundamental to the correct interpretation of solution
-data but is not captured by any existing CGNS construct.  The proposal
-is general: it applies at any polynomial order, to any discretization
-family (finite volume, finite element, spectral element, etc.), and
-interacts naturally with the higher-order solution infrastructure
-introduced by CPEX~0045.
+This CPEX introduces a \texttt{SolutionContinuity\_t} enumeration and corresponding
+SIDS node to the CGNS standard, thereby enabling CGNS files to specify whether solution
+data exhibits continuous or discontinuous field continuity. This distinction, most commonly
+associated with Continuous Galerkin (CG) and Discontinuous Galerkin (DG) finite element methods,
+is essential for the correct interpretation of solution data, yet is not addressed by any
+existing CGNS construct. The proposal is broadly applicable: it is valid for any polynomial
+order, any discretization family (including finite element, finite volume,
+and spectral element methods), and integrates seamlessly with the higher-order
+solution infrastructure introduced by CPEX~0045.
+
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Motivation and Rationale}
@@ -218,7 +214,7 @@ distinction:
 \begin{description}[leftmargin=2em]
 \item[\texttt{GridLocation\_t}] specifies \emph{where} data is
   located (vertices, cell centers, faces, edges, or interpolation
-  points) but not whether values at shared locations are shared or
+  points), but not whether values at shared locations are shared or
   element-local.  A \texttt{Vertex}-located solution could be either
   CG or DG; the same applies to \texttt{InterpolationPoints}.
 
@@ -226,7 +222,7 @@ distinction:
   can index subsets of data but does not encode continuity semantics.
 
 \item[\texttt{InterpolationType\_t}] (CPEX~0045) describes the
-  polynomial basis (e.g., Lagrange, monomial) but not whether
+  polynomial basis (e.g., Lagrange, monomial), but not whether
   that basis yields a globally continuous or element-local field.
 
 \item[\texttt{SolutionInterpolation\_t}] (CPEX~0045) records
@@ -264,7 +260,7 @@ higher-order methods}:
   within the same file or across coupled zones.
 \end{itemize}
 
-A proper metadata field should therefore live at the
+Accordingly, a proper metadata field should therefore live at the
 \texttt{FlowSolution\_t} level, applicable at any order, not solely
 within the higher-order interpolation infrastructure.
 
@@ -321,7 +317,7 @@ The enumeration values are:
   \texttt{ZoneSubRegion\_t} node.  The string value should identify
   the continuity convention (e.g.,
   \texttt{"HDG-trace"}, \texttt{"C1-spline"}).  This allows readers
-  to recognise the convention without requiring a separate
+  to recognize the convention without requiring a separate
   side-channel.
 
 \item[\texttt{SolutionContinuous}] DOFs at shared mesh entities
@@ -333,7 +329,7 @@ The enumeration values are:
   (e.g., Raviart--Thomas) and $\boldsymbol{H}(\operatorname{curl})$-conforming spaces
   (e.g., N\'{e}d\'{e}lec) should also use this label: their DOFs are
   shared at element interfaces (normal-flux or tangential-component
-  DOFs respectively), even though the full vector field is not
+  DOFs, respectively), even though the full vector field is not
   pointwise $C^0$-continuous.  Typical of: Continuous Galerkin FEM,
   $C^0$ spectral element methods, isogeometric analysis with
   $C^0$~junctions, $\boldsymbol{H}(\operatorname{div})$ and $\boldsymbol{H}(\operatorname{curl})$
@@ -346,12 +342,12 @@ The enumeration values are:
   finite volume methods, $C^{-1}$ spectral element methods.
 \end{description}
 
-\subsubsection{Why Two Values Are Sufficient}
+\subsubsection{Rationale for Two-Value Classification}
 
 The binary continuous/discontinuous classification (enum values
 \texttt{SolutionContinuous} and \texttt{SolutionDiscontinuous}) is
 deliberate.  Methods that appear to require finer distinctions are
-already handled by the existing two values combined with standard
+already handled by the existing two values, combined with standard
 CGNS patterns:
 
 \begin{description}[leftmargin=2em]
@@ -989,14 +985,14 @@ layout when DG DOFs coincide with shared mesh vertices.
   equivalent to \texttt{SolutionContinuityNull}.  No existing file
   is invalidated.
 
-\item \textbf{Existing readers:} Unaffected.  Per CGNS convention,
+\item \textbf{Existing readers:} Unaffected.  Per the CGNS convention,
   readers silently ignore unknown child nodes.  An older library
   reading a file with \texttt{SolutionContinuity} nodes will
   simply skip them.
 
 \item \textbf{Existing writers:} Unaffected.  Codes that do not call
   the new API functions produce files without
-  \texttt{SolutionContinuity} nodes, identical to current
+  \texttt{SolutionContinuity} nodes, identical to the current
   behavior.
 
 \item \textbf{ABI:} The \texttt{cgns\_sol}, \texttt{cgns\_discrete},
@@ -1141,11 +1137,11 @@ cg_sol_continuity_write(fn, B, Z, S,
     CGNS_ENUMV(SolutionDiscontinuous));
 \end{lstlisting}
 
-This example demonstrates that the continuity metadata is useful
-even for traditional low-order methods.  While a \texttt{CellCenter}
-solution is inherently element-local, explicitly recording the
-continuity aids post-processors and coupling frameworks that need
-to distinguish between solution types programmatically.
+This example illustrates that continuity metadata provides value even
+for traditional low-order methods. Although a \texttt{CellCenter} solution
+is inherently element-local, explicitly recording the continuity assists
+post-processors and coupling frameworks in programmatically distinguishing
+between solution types.
 
 \subsection{Example 7: DG Solution on a Shared-Vertex Mesh (C)}
 \label{ex:shared-vertex-dg}
@@ -1477,8 +1473,8 @@ The node is written only when the continuity is not
 \section{Design Decisions}
 %% ═════════════════════════════════════════════════════════════════════════
 
-The following design questions were considered during the development
-of this proposal.  Each is resolved below with rationale grounded in
+Several design questions were evaluated during the development
+of this proposal.  Each is addressed below with rationale grounded in
 existing CGNS conventions and SIDS precedent.
 
 \begin{enumerate}[leftmargin=2em]
