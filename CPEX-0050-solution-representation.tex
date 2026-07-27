@@ -19,8 +19,7 @@
 \usepackage{colortbl}
 \usepackage{parskip}
 \usepackage{microtype}
-\usepackage{hyphenat}
-\setlength{\emergencystretch}{3em}
+\setlength{\emergencystretch}{4em}
 \usepackage{needspace}
 \usepackage[right,running]{lineno}
 
@@ -74,16 +73,18 @@
   \par\vspace{0.8em}%
   \noindent\colorbox{cgnslight!50}{\makebox[\dimexpr\linewidth-2\fboxsep][l]{%
     \texttt{\textbf{\color{cgnsblue}#1}}}}\\[0.3em]%
-  \begin{quote}\ttfamily
+  \begin{quote}\ttfamily\small
 }{%
   \end{quote}\vspace{0.4em}%
 }
 
 %% ── Header / Footer ────────────────────────────────────────────────────
+\setlength{\headheight}{22pt}
+\addtolength{\topmargin}{-8pt}
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small\color{cgnsblue} CPEX 0050 --- DOF Storage Type}
-\fancyhead[R]{\small\color{cgnsblue} Version 1.0}
+\fancyhead[R]{\small\color{cgnsblue} Version 1.1}
 \fancyfoot[C]{\small\color{cgnsblue}\thepage}
 \renewcommand{\headrulewidth}{0.5pt}
 \renewcommand{\headrule}{\hbox to\headwidth{\color{cgnsgold}\leaders\hrule height\headrulewidth\hfill}}
@@ -104,8 +105,8 @@
   {\LARGE\bfseries\color{cgnsblue} CGNS Proposal for Extension 0050}\\[0.6em]
   {\Large\color{cgnsteal} DOF Storage Type}\\[0.4em]
   {\color{cgnsgold}\rule{0.4\textwidth}{0.8pt}}\\[0.6em]
-  {\large Version 1.0}\\[0.6em]
-  \today
+  {\large Version 1.1}\\[0.6em]
+  July 27, 2026
 \end{center}
 
 \vspace{1em}
@@ -113,20 +114,24 @@
 %% ── Metadata Table ──────────────────────────────────────────────────────
 \noindent
 \rowcolors{2}{cgnslight!30}{white}
-\begin{tabular}{@{} >{\bfseries\color{cgnsblue}}l l @{}}
+\begin{tabular}{@{} >{\bfseries\color{cgnsblue}}l p{0.60\linewidth} @{}}
 \toprule
 CPEX\#           & 0050 \\
 Scope            & Record DOF storage layout: shared or independent \\
 Champion         & M.\ Scot Breitenfeld \\
 Organization     & The HDF Group \\
 E-mail           & \href{mailto:brtnfld@hdfgroup.org}{brtnfld@hdfgroup.org} \\
-GitHub Issue     & TBD \\
-Reference Impl.  & TBD \\
-Target Release   & TBD \\
-Date First Posted & \today \\
-SIDS Status      & proposed \\
-Filemap Status   & proposed \\
-MLL Status       & proposed \\
+GitHub Issue     & to be assigned by the CPEX editors \\
+Reference Impl.  & pending (see Section~\ref{sec:refimpl}) \\
+Target Release   & pending (see Section~\ref{sec:refimpl}) \\
+Date First Posted & April 21, 2026 \\
+Date of Last Revision & July 27, 2026 \\
+Prior Title      & ``Support Solution Continuity Type in CGNS''
+                   (\texttt{SolutionContinuity\_t}); renamed in v1.1---see
+                   Section~\ref{sec:naming-history} \\
+SIDS Status      & proposal under review \\
+Filemap Status   & proposal under review \\
+MLL Status       & proposal under review \\
 \bottomrule
 \end{tabular}
 
@@ -154,7 +159,8 @@ The distinction is fundamental to the correct interpretation of solution data bu
 captured by any existing CGNS construct.  The proposal is broadly applicable: it is valid for
 any polynomial order, any discretization family (including finite element, finite volume,
 and spectral element methods), and interacts naturally with the higher-order solution
-infrastructure introduced by CPEX~0045.
+infrastructure introduced by CPEX~0045~\cite{cpex0045} and the integration-point
+infrastructure introduced by CPEX~0047~\cite{cpex0047}.
 
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -165,19 +171,20 @@ infrastructure introduced by CPEX~0045.
 
 Modern CFD and computational mechanics codes increasingly use
 discretization methods whose solution data cannot be fully described
-by the existing CGNS metadata.  The core issue is the treatment of
-degrees of freedom (DOFs) at shared geometric entities (vertices,
-edges, faces):
+by the existing CGNS metadata~\cite{cgns-sids}.  The core issue is the
+treatment of degrees of freedom (DOFs) at shared geometric entities
+(vertices, edges, faces):
 
 \begin{itemize}[leftmargin=2em]
-\item In a \textbf{continuous} representation (e.g., Continuous
+\item In a \textbf{shared} layout (e.g., Continuous
   Galerkin FEM, $C^0$ spectral element methods), DOFs at shared
   interfaces are \emph{shared}: a single value exists per geometric
   node, and the global solution field is at least $C^0$-continuous
   across element boundaries.
 
-\item In a \textbf{discontinuous} representation (e.g., Discontinuous
-  Galerkin, finite volume, $C^{-1}$ spectral element methods), DOFs
+\item In an \textbf{independent} layout (e.g., Discontinuous
+  Galerkin~\cite{hesthaven2008,cockburn2000}, finite volume,
+  $C^{-1}$ spectral element methods), DOFs
   are \emph{element-local}: each element owns its own values at every
   point, including at shared interfaces.  Multiple independent values
   may exist at the same geometric location.
@@ -191,9 +198,9 @@ This distinction affects:
   mesh.  Post-processors that assume shared-vertex semantics will
   misinterpret the data dimensions.
 
-\item \textbf{Visualization and interpolation.}  CG fields can be
-  interpolated globally using the mesh connectivity; DG fields require
-  element-local interpolation and may exhibit intentional
+\item \textbf{Visualization and interpolation.}  Shared-DOF fields can be
+  interpolated globally using the mesh connectivity; independent-DOF fields
+  require element-local interpolation and may exhibit intentional
   discontinuities at element interfaces that should not be smoothed.
 
 \item \textbf{Restart and data exchange.}  Solvers reading restart
@@ -204,42 +211,51 @@ This distinction affects:
   applications, for example, a continuous FEM structural displacement
   field and a discontinuous DG fluid field coexist---the coupling
   framework must use different interpolation and projection operators
-  for each, and the continuity metadata enables this dispatch.
+  for each, and the DOF storage metadata enables this dispatch.
 
 \item \textbf{Error estimation and adaptation.}  The jump in solution
   values across element interfaces in a DG solution is physically
   meaningful and is used for error estimation.  A post-processor that
-  incorrectly treats DG data as continuous would average out these
+  incorrectly treats DG data as shared-DOF data would average out these
   jumps.
 \end{enumerate}
 
 \subsection{Inadequacy of Existing CGNS Constructs}
 
-No existing CGNS mechanism captures the continuous/discontinuous
+No existing CGNS mechanism captures the shared/independent
 distinction:
 
 \begin{description}[leftmargin=2em]
 \item[\texttt{GridLocation\_t}] specifies \emph{where} data is
-  located (vertices, cell centers, faces, edges, or interpolation
-  points), but not whether values at shared locations are shared or
-  element-local.  A \texttt{Vertex}-located solution could be either
-  CG or DG; the same applies to \texttt{InterpolationPoints}.
+  located (vertices, cell centers, faces, edges, interpolation
+  points, or integration points), but not whether values at shared
+  locations are shared or element-local.  A \texttt{Vertex}-located
+  solution could use either layout; the same applies to
+  \texttt{InterpolationPoints} and \texttt{IntegrationPoint}.
 
 \item[\texttt{PointSet}] (\texttt{PointList}, \texttt{PointRange})
-  can index subsets of data but does not encode continuity semantics.
+  can index subsets of data but does not encode DOF-sharing semantics.
 
-\item[\texttt{InterpolationType\_t}] (CPEX~0045) describes the
-  polynomial basis (e.g., Lagrange, monomial), but not whether
-  that basis yields a globally continuous or element-local field.
+\item[\texttt{InterpolationType\_t}] (CPEX~0045~\cite{cpex0045})
+  describes the polynomial basis (e.g., Lagrange, monomial), but not
+  whether that basis yields a globally shared or element-local DOF set.
 
-\item[\texttt{SolutionInterpolation\_t}] (CPEX~0045) records
-  polynomial order and basis type per element type but contains no
-  continuity information.
+\item[\texttt{SolutionInterpolation\_t}] (CPEX~0045, a child of
+  \texttt{Family\_t}) records the interpolation type and control-point
+  layout for a given basic element type; the polynomial orders are
+  recorded separately in the \texttt{InterpolationOrders} child of
+  \texttt{FlowSolution\_t}.  Neither carries DOF-sharing information.
+
+\item[\texttt{ItgPointsStartOffset}] (CPEX~0047~\cite{cpex0047})
+  gives the per-element starting offsets of integration-point data, which
+  implies an element-local layout for that particular grid location, but
+  says nothing about vertex-, edge-, or face-located DOFs and does not
+  generalize to other grid locations.
 
 \item[Data array size] can sometimes be used to \emph{infer} the
-  representation---a DG field will have $N_{\mathrm{elem}} \times
-  N_{\mathrm{DOF/elem}}$ values versus $N_{\mathrm{nodes}}$ for CG.
-  However, this inference is fragile, ambiguous for $p=0$
+  layout---an independent field will have $N_{\mathrm{elem}} \times
+  N_{\mathrm{DOF/elem}}$ values versus $N_{\mathrm{nodes}}$ for a shared
+  field.  However, this inference is fragile, ambiguous for $p=0$
   (cell-centered) data, and breaks entirely for mixed-element meshes
   or when point sets are used.
 \end{description}
@@ -247,19 +263,20 @@ distinction:
 \subsection{Generality Beyond Higher-Order Methods}
 
 Although often discussed in the context of high-order finite elements,
-the continuous/discontinuous distinction is \textbf{not limited to
+the shared/independent distinction is \textbf{not limited to
 higher-order methods}:
 
 \begin{itemize}[leftmargin=2em]
 \item \textbf{DG $p=0$} (piecewise constant) is essentially a
   cell-centered finite volume representation.
-\item \textbf{DG $p=1$} (piecewise linear, discontinuous) is widely
+\item \textbf{DG $p=1$} (piecewise linear, independent DOFs) is widely
   used and is a low-order method.
 \item \textbf{CG $p=1$} is standard continuous linear FEM, the most
   common finite element discretization.
-\item Classical \textbf{finite volume} representations are inherently discontinuous ($p=0$ DG).
+\item Classical \textbf{finite volume} representations are inherently
+  independent ($p=0$ DG).
 \item \textbf{Hybridizable DG (HDG)} methods have both element-local
-  DOFs (discontinuous) and trace DOFs on faces (continuous on the
+  DOFs (independent) and trace DOFs on faces (shared on the
   skeleton).
 \item \textbf{FSI and multi-physics coupling} often combines a
   continuous FEM structural solver (shared displacement DOFs) with a
@@ -296,8 +313,22 @@ of DOF-map metadata---shared versus independent---which is sufficient for the va
 of post-processing and data-exchange use cases.  The full generality of a dof-relation
 (arbitrary per-element index remapping, as required for quadratic or higher-order elements
 whose mid-edge DOFs must be identified across elements) is the domain of
-\texttt{SolutionInterpolation\_t} (CPEX~0045).  The two CPEXs are therefore complementary
-layers of the same concept introduced in ASCI-DMF.
+CPEX~0045~\cite{cpex0045} and CPEX~0047~\cite{cpex0047}.  These CPEXs are therefore
+complementary layers of the same concept introduced in ASCI-DMF.
+
+\subsection{Naming History}
+\label{sec:naming-history}
+
+Version~1.0 of this proposal named the enumeration \texttt{SolutionContinuity\_t} with
+values \texttt{Continuous} and \texttt{Discontinuous}, and was posted under the title
+``Support Solution Continuity Type in CGNS.''  That vocabulary was misleading: readers
+consistently understood ``continuity'' as a claim about the mathematical smoothness of
+the field, which this node does not make.  Version~1.1 renames the type to
+\texttt{DofStorage\_t} with values \texttt{Shared} and \texttt{Independent} to state
+plainly that the node describes \emph{storage layout}.  The CPEX registry entry
+(scope line and attached document filename) requires a corresponding update.  No files
+have been written with the v1.0 names---there is no reference implementation yet---so no
+migration path is required.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Detailed Description}
@@ -309,12 +340,19 @@ The proposal introduces:
 
 \begin{enumerate}[leftmargin=2em]
 \item A new \texttt{DofStorage\_t} enumeration with values
-  covering the common DOF storage layouts.
-\item A new optional child node of \texttt{FlowSolution\_t},
-  \texttt{DiscreteData\_t}, and \texttt{ZoneSubRegion\_t} recording
-  the DOF storage layout.
-\item Mid-Level Library functions to read and write the DOF storage layout.
-\item Fortran bindings.
+  covering the common DOF storage layouts
+  (Section~\ref{sec:enum}).
+\item A new optional child node, \texttt{DofStorage}, of
+  \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t},
+  \texttt{ZoneSubRegion\_t}, and \texttt{UserDefinedData\_t},
+  recording the DOF storage layout
+  (Section~\ref{sec:sids-node}).
+\item One pair of position-based Mid-Level Library~\cite{cgns-mll}
+  functions to read and
+  write the DOF storage layout, following the pattern established by
+  \texttt{cg\_gridlocation\_read} / \texttt{cg\_gridlocation\_write}
+  (Sections~\ref{sec:mll} and~\ref{sec:mll-impl}).
+\item Fortran bindings for that pair (Example~\ref{ex:fortran}).
 \end{enumerate}
 
 \subsection{New Enumeration: \texttt{DofStorage\_t}}
@@ -323,18 +361,14 @@ The proposal introduces:
 \begin{lstlisting}[language=C]
 typedef enum {
   CGNS_ENUMV( DofStorageNull )        = CG_Null,
-  CGNS_ENUMV( DofStorageUserDefined )  = CG_UserDefined,
-  CGNS_ENUMV( Shared )                  = 2,
-  CGNS_ENUMV( Independent )               = 3
+  CGNS_ENUMV( DofStorageUserDefined ) = CG_UserDefined,
+  CGNS_ENUMV( Shared )                = 2,
+  CGNS_ENUMV( Independent )           = 3
 } CGNS_ENUMT( DofStorage_t );
 
 #define NofValidDofStorage 4
 
-extern CGNSDLL const char *
-    DofStorageName[NofValidDofStorage];
-
-CGNSDLL const char *cg_DofStorageName(
-    CGNS_ENUMT(DofStorage_t) type);
+extern CGNSDLL const char *DofStorageName[NofValidDofStorage];
 \end{lstlisting}
 
 The enumeration values are:
@@ -343,32 +377,27 @@ The enumeration values are:
 \item[\texttt{DofStorageNull}] No DOF storage layout specified.
   This is the default for backward compatibility: existing
   files and codes that do not set this field are unaffected.
+  See Section~\ref{sec:legacy-inference} for the recommended
+  interpretation of legacy data.
 
 \item[\texttt{DofStorageUserDefined}] Application-defined DOF storage
   layout not covered by the standard values.  When this value is
-  used, writers \emph{should} attach a \texttt{Descriptor\_t} child
-  node named \texttt{"DofStorageDescription"} to the parent
-  \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t}, or
-  \texttt{ZoneSubRegion\_t} node.  The string value should identify
+  used, writers \emph{shall} attach a \texttt{Descriptor\_t} child
+  node named \texttt{"DofStorageDescription"} to the same parent
+  node.  The string value identifies
   the storage convention (e.g.,
   \texttt{"HDG-trace"}, \texttt{"C1-spline"}).  This allows readers
   to recognize the convention without requiring a separate
-  side-channel.
+  side-channel; see Example~\ref{ex:dispatch} for the reader side.
 
 \item[\texttt{Shared}] DOFs at shared mesh entities
   (vertices, edges, faces) are \emph{shared} between adjacent
   elements: each shared entity carries exactly one value.  This is
   a statement about \emph{storage and DOF-sharing semantics}, not
   about the mathematical smoothness of the field.
-  Consequently, $\boldsymbol{H}(\operatorname{div})$-conforming spaces
-  (e.g., Raviart--Thomas) and $\boldsymbol{H}(\operatorname{curl})$-conforming spaces
-  (e.g., N\'{e}d\'{e}lec) should also use this label: their DOFs are
-  shared at element interfaces (normal-flux or tangential-component
-  DOFs, respectively), even though the full vector field is not
-  pointwise $C^0$-continuous.  Typical of: Continuous Galerkin FEM,
+  Typical of: Continuous Galerkin FEM,
   $C^0$ spectral element methods, isogeometric analysis with
-  $C^0$~junctions, $\boldsymbol{H}(\operatorname{div})$ and $\boldsymbol{H}(\operatorname{curl})$
-  conforming spaces.
+  $C^0$~junctions.  See the caveat on vector-conforming spaces below.
 
 \item[\texttt{Independent}] The solution field is
   element-local: each element owns independent DOFs, including at
@@ -376,6 +405,46 @@ The enumeration values are:
   adjacent elements.  Typical of: Discontinuous Galerkin methods,
   finite volume methods, $C^{-1}$ spectral element methods.
 \end{description}
+
+\subsubsection{Caveat: Vector-Conforming Spaces}
+\label{sec:hdiv-hcurl}
+
+$\boldsymbol{H}(\operatorname{div})$-conforming spaces
+(e.g., Raviart--Thomas) and $\boldsymbol{H}(\operatorname{curl})$-conforming spaces
+(e.g., N\'{e}d\'{e}lec) store one value per shared interface entity---a normal-flux
+or tangential-component DOF, respectively---and so satisfy the letter of the
+\texttt{Shared} definition, even though the full vector field is not
+pointwise $C^0$-continuous.
+
+However, such DOFs additionally carry a per-element \textbf{orientation
+convention}: the sign of the stored value depends on a choice of outward
+normal (\,$\boldsymbol{H}(\operatorname{div})$\,) or edge tangent direction
+(\,$\boldsymbol{H}(\operatorname{curl})$\,), and adjacent elements see the same
+DOF with opposite sign.  \texttt{DofStorage\_t} does not encode that
+orientation, and no existing CGNS construct does either.
+
+Accordingly:
+
+\begin{itemize}[leftmargin=2em]
+\item A writer \emph{may} label such a field \texttt{Shared}, since the
+  storage statement is accurate.
+\item A writer that does so \emph{shall} also mark the field with
+  \texttt{DofStorageUserDefined}-style provenance---either by using
+  \texttt{DofStorageUserDefined} with a
+  \texttt{DofStorageDescription} of \texttt{"Hdiv-RT"} or
+  \texttt{"Hcurl-Nedelec"}, or by attaching a
+  \texttt{Descriptor\_t} identifying the space---so that readers are not
+  misled.
+\item A reader \emph{shall not} interpolate, average, or otherwise treat
+  \texttt{Shared} DOFs as pointwise nodal values of a scalar field
+  without first establishing that the field is nodal.  Applying nodal
+  interpolation to Raviart--Thomas or N\'{e}d\'{e}lec DOFs yields
+  incorrect results.
+\end{itemize}
+
+Supplying the orientation metadata that would make vector-conforming
+spaces safely self-describing is deliberately out of scope for this
+CPEX and is a natural subject for a future, narrowly scoped proposal.
 
 \subsubsection{Rationale for Two-Value Classification}
 
@@ -385,13 +454,13 @@ already handled by the existing two values, combined with standard
 CGNS patterns:
 
 \begin{description}[leftmargin=2em]
-\item[HDG and mixed-continuity methods] use both element-local
-  volume DOFs and globally continuous trace DOFs.  These are stored as
+\item[HDG and mixed-layout methods] use both element-local
+  volume DOFs and globally shared trace DOFs.  These are stored as
   separate \texttt{FlowSolution\_t} nodes---one marked
   \texttt{Independent}, the other
   \texttt{Shared}---following the same pattern CGNS already
   uses to separate fields at different \texttt{GridLocation\_t} values.
-  A dedicated \texttt{MixedContinuity} value would conflate two distinct
+  A dedicated \texttt{MixedStorage} value would conflate two distinct
   data layouts into a single node, making it harder, not easier, for
   post-processors to interpret the data.
 
@@ -403,11 +472,11 @@ CGNS patterns:
   of the stored data that readers and post-processors need to act on.
 
 \item[Isogeometric analysis ($C^k$, $k \geq 1$)] uses basis functions
-  with higher-than-$C^0$ smoothness, but the data layout is still
-  globally continuous with shared DOFs at patch interfaces.  The
+  with higher-than-$C^0$ smoothness, but the data layout still
+  shares DOFs at patch interfaces.  The
   correct label is \texttt{Shared}.  The smoothness order
   $k$ is a property of the basis, not of the data layout; it belongs in
-  the interpolation metadata (CPEX~0045), not in the continuity type.
+  the interpolation metadata (CPEX~0045), not in the DOF storage type.
 \end{description}
 
 The \texttt{DofStorageUserDefined} value remains available
@@ -418,47 +487,82 @@ enumeration types.
 \emph{storage and DOF-sharing semantics} only---it answers
 ``are interface DOFs shared or element-local?''  It does not
 encode the polynomial basis, smoothness order, patch topology,
-or support-radius metadata that isogeometric analysis (IGA), meshless, or other
+orientation conventions (Section~\ref{sec:hdiv-hcurl}), or
+support-radius metadata that isogeometric analysis (IGA), meshless, or other
 non-standard discretizations may additionally require.  Those
-richer descriptions belong in \texttt{SolutionInterpolation\_t}
-(CPEX~0045) or in future extensions; this CPEX is intentionally
+richer descriptions belong in CPEX~0045, CPEX~0047,
+or in future extensions; this CPEX is intentionally
 scoped to the coarser, universally applicable
-continuous/discontinuous distinction.
+shared/independent distinction.
+
+\subsubsection{Enumeration Value Naming}
+\label{sec:value-naming}
+
+The values \texttt{Shared} and \texttt{Independent} are unprefixed,
+following CGNS convention: only the \texttt{Null} and
+\texttt{UserDefined} members of an enumeration carry the type-name
+prefix (cf.\ \texttt{GridLocationNull} versus \texttt{Vertex},
+\texttt{MassUnitsNull} versus \texttt{Kilogram}).
+
+The committee should nonetheless weigh a known risk.  Existing
+unprefixed CGNS enumeration values are domain-specific nouns
+(\texttt{Vertex}, \texttt{CellCenter}, \texttt{Kilogram},
+\texttt{Structured}), whereas \texttt{Shared} and especially
+\texttt{Independent} are generic adjectives that applications and I/O
+layers commonly define for unrelated purposes.  Because
+\texttt{cgnslib.h} injects enumeration values into the global C
+namespace, a collision would surface as a compile error in downstream
+code.  No collision exists in \texttt{cgnslib.h} today.
+
+The alternative---\texttt{DofStorageShared} and
+\texttt{DofStorageIndependent}---trades a small departure from
+convention for collision safety.  This proposal retains the
+unprefixed names for consistency; the champion will adopt the
+prefixed names if the committee prefers.  Adopting them would change
+only the C and Fortran identifiers, not the on-disk strings, so it is
+a source-compatibility question rather than a file-format one.
 
 \subsection{SIDS Node Definition}
 \label{sec:sids-node}
 
-The continuity is stored as a new optional child node of
+The DOF storage layout is stored as a new optional child node of
 \texttt{FlowSolution\_t}.  The amended SIDS definition adds one line
-(shown with the \texttt{+} marker).  The definition below includes the
-\texttt{SolutionInterpolation\_t} child introduced by CPEX~0045:
+(shown with the \texttt{+} marker).  The definition below also shows the
+\texttt{InterpolationOrders} and \texttt{CharacteristicLength} children
+introduced by CPEX~0045~\cite{cpex0045}, for context; note that
+CPEX~0045's \texttt{SolutionInterpolation\_t} node is a child of
+\texttt{Family\_t}, not of \texttt{FlowSolution\_t}.
 
 \begin{sidsnode}{FlowSolution\_t (amended, SIDS Section 7.7)}
 FlowSolution\_t< int CellDimension, int IndexDimension, \\
-\qquad\qquad\quad int VertexSize[IndexDimension], \\
-\qquad\qquad\quad int CellSize[IndexDimension] > := \\
+\qquad int VertexSize[IndexDimension], \\
+\qquad int CellSize[IndexDimension] > := \\
 \quad \{ \\
-\quad List( Descriptor\_t Descriptor1 ... DescriptorN ) ;  \qquad\qquad (o) \\
+\quad List( Descriptor\_t Descriptor1 ... DescriptorN ) ; \hfill (o) \\
 \\
-\quad GridLocation\_t GridLocation ; \qquad\qquad\qquad\qquad\qquad\quad\; (o/d) \\
+\quad GridLocation\_t GridLocation ; \hfill (o/d) \\
 \\
-\quad Rind\_t<IndexDimension> Rind ; \qquad\qquad\qquad\qquad\qquad\quad (o/d) \\
+\quad IndexArray\_t<1, 2, int> InterpolationOrders ; \hfill (o/d) \\
+\qquad \textit{(CPEX 0045)} \\
+\quad DataArray\_t<R8, 1|2, ...> CharacteristicLength ; \hfill (o) \\
+\qquad \textit{(CPEX 0045)} \\
 \\
-\quad IndexRange\_t<IndexDimension> PointRange ; \qquad\qquad\qquad\;\; (o) \\
-\quad IndexArray\_t<IndexDimension, ListLength[], int> PointList ; \; (o) \\
+\quad Rind\_t<IndexDimension> Rind ; \hfill (o/d) \\
+\\
+\quad IndexRange\_t<IndexDimension> PointRange ; \hfill (o) \\
+\quad IndexArray\_t<IndexDimension, ListLength[], int> PointList ; \hfill (o) \\
 \\
 \quad List( DataArray\_t<DataType, IndexDimension, DataSize[]> \\
-\qquad\quad DataArray1 ... DataArrayN ) ; \qquad\qquad\qquad\qquad\quad\;\; (o) \\
+\qquad DataArray1 ... DataArrayN ) ; \hfill (o) \\
 \\
-\quad DataClass\_t DataClass ; \qquad\qquad\qquad\qquad\qquad\qquad\quad\; (o) \\
+\quad DataClass\_t DataClass ; \hfill (o) \\
 \\
-\quad DimensionalUnits\_t DimensionalUnits ; \qquad\qquad\qquad\quad\;\;\; (o) \\
+\quad DimensionalUnits\_t DimensionalUnits ; \hfill (o) \\
 \\
-\quad SolutionInterpolation\_t SolutionInterpolation ; \qquad\quad\;\;\;\; (o) \quad\textit{(CPEX 0045)} \\
++ \quad \textcolor{red}{DofStorage\_t DofStorage} ; \hfill (o) \\
 \\
-+ \quad \textcolor{red}{DofStorage\_t DofStorage} ; \qquad\quad\;\; (o) \\
-\\
-\quad List( UserDefinedData\_t UserDefinedData1 ... UserDefinedDataN ) ; (o) \\
+\quad List( UserDefinedData\_t UserDefinedData1 ... \\
+\qquad UserDefinedDataN ) ; \hfill (o) \\
 \quad \}
 \end{sidsnode}
 
@@ -468,131 +572,189 @@ The \texttt{DofStorage} child is \textbf{optional}
 compatibility.
 
 The same optional child node is added to \texttt{DiscreteData\_t}
-(SIDS Section~12.4), using identical structure and semantics:
+(SIDS Section~12.4), using identical structure and semantics
+(Example~\ref{ex:discrete}):
 
 \begin{sidsnode}{DiscreteData\_t (amended, SIDS Section 12.4)}
 DiscreteData\_t< int CellDimension, int IndexDimension, \\
-\qquad\qquad\quad int VertexSize[IndexDimension], \\
-\qquad\qquad\quad int CellSize[IndexDimension] > := \\
+\qquad int VertexSize[IndexDimension], \\
+\qquad int CellSize[IndexDimension] > := \\
 \quad \{ \\
 \quad ... (existing children unchanged) ... \\
 \\
-\quad + \quad \textcolor{red}{DofStorage\_t DofStorage} ; \qquad\quad\;\; (o) \\
++ \quad \textcolor{red}{DofStorage\_t DofStorage} ; \hfill (o) \\
 \quad \}
 \end{sidsnode}
 
 The optional child node is also added to \texttt{ZoneSubRegion\_t}
 (SIDS Section~7.9).  \texttt{ZoneSubRegion\_t} holds
 \texttt{DataArray\_t} nodes for localized solutions, boundary fluxes,
-or fields on sub-regions where the continuous/discontinuous distinction
-applies equally:
+or fields on sub-regions where the shared/independent distinction
+applies equally (Example~\ref{ex:subreg}):
 
 \begin{sidsnode}{ZoneSubRegion\_t (amended, SIDS Section 7.9)}
 ZoneSubRegion\_t< int RegionCellDimension > := \\
 \quad \{ \\
 \quad ... (existing children unchanged) ... \\
 \\
-\quad + \quad \textcolor{red}{DofStorage\_t DofStorage} ; \qquad\quad\;\; (o) \\
++ \quad \textcolor{red}{DofStorage\_t DofStorage} ; \hfill (o) \\
+\quad \}
+\end{sidsnode}
+
+Finally, the child node is added to \texttt{UserDefinedData\_t}
+(SIDS Section~12.10).  \texttt{UserDefinedData\_t} is the standard
+generic extension point and already accepts \texttt{GridLocation\_t}
+and \texttt{PointSet} children; permitting \texttt{DofStorage\_t}
+there keeps the two consistent and costs nothing, because the
+position-based API of Section~\ref{sec:mll} covers all parents through
+a single code path:
+
+\begin{sidsnode}{UserDefinedData\_t (amended, SIDS Section 12.10)}
+UserDefinedData\_t := \\
+\quad \{ \\
+\quad ... (existing children unchanged) ... \\
+\\
++ \quad \textcolor{red}{DofStorage\_t DofStorage} ; \hfill (o) \\
 \quad \}
 \end{sidsnode}
 
 \subsubsection{Node Placement Rationale}
 
 The node is placed as a child of \texttt{FlowSolution\_t} (rather
-than, for example, \texttt{Zone\_t} or
-\texttt{SolutionInterpolation\_t}) because:
+than, for example, \texttt{Zone\_t}) because:
 
 \begin{itemize}[leftmargin=2em]
-\item The continuity is a property of the \emph{solution field},
+\item The DOF storage layout is a property of the \emph{solution field},
   not of the mesh or the zone.
 
 \item A single zone may contain multiple \texttt{FlowSolution\_t}
-  nodes with different continuity---for example, an HDG solver
-  storing both volume (discontinuous) and trace (continuous) solutions,
-  or a multi-physics code storing a continuous displacement field
-  alongside a discontinuous stress field.
+  nodes with different layouts---for example, an HDG solver
+  storing both volume (independent) and trace (shared) solutions,
+  or a multi-physics code storing a shared-DOF displacement field
+  alongside an independent-DOF stress field.
 
 \item This parallels the existing \texttt{GridLocation\_t} child of
   \texttt{FlowSolution\_t}, which is also a per-solution-node
   property.
 
-\item Placing it within the CPEX~0045 \texttt{SolutionInterpolation\_t}
-  would incorrectly limit the scope to higher-order solutions, when
-  the distinction applies at any order.
+\item Placing it within CPEX~0045's \texttt{SolutionInterpolation\_t}
+  would be doubly wrong: that node is a child of \texttt{Family\_t},
+  so a per-family setting could not distinguish two solutions on the
+  same family, and it would incorrectly limit the scope to
+  higher-order solutions when the distinction applies at any order.
 \end{itemize}
+
+\subsubsection{Why a New Node Rather Than a New \texttt{GridLocation\_t} Value}
+\label{sec:why-new-node}
+
+The most obvious alternative is to add a \texttt{GridLocation\_t}
+value---say \texttt{ElementVertex}---meaning ``at element-local copies
+of the vertices.''  This proposal rejects that approach:
+
+\begin{itemize}[leftmargin=2em]
+\item \textbf{It conflates two orthogonal axes.}  \texttt{GridLocation\_t}
+  answers \emph{where}; DOF storage answers \emph{how many copies}.  Each
+  of the seven existing spatial locations can in principle carry either
+  layout, so folding the second axis into the first would require
+  roughly doubling the enumeration (\texttt{ElementVertex},
+  \texttt{ElementEdgeCenter}, \texttt{ElementFaceCenter}, \dots) rather
+  than adding one value.
+
+\item \textbf{It would not be backward compatible in practice.}
+  \texttt{GridLocation\_t} is consumed by essentially every CGNS reader,
+  and each has a switch over its values.  A new value causes existing
+  readers to fail or fall through to a default, whereas an unknown
+  \emph{child node} is silently ignored by both the MLL and
+  \texttt{cgnscheck} (Section~\ref{sec:compat}).
+
+\item \textbf{The distinction is not always locational.}  For
+  \texttt{CellCenter} data the layout is independent with no
+  corresponding ``element-local'' location to name; the flag still
+  carries useful information for coupling frameworks.
+
+\item \textbf{Precedent.}  CGNS already separates orthogonal per-solution
+  properties into sibling child nodes (\texttt{GridLocation},
+  \texttt{Rind}, \texttt{DataClass}, \texttt{DimensionalUnits}) rather
+  than encoding them in a single enumeration.
+\end{itemize}
+
+Note that CPEX~0045 and CPEX~0047 do each add a
+\texttt{GridLocation\_t} value (\texttt{InterpolationPoints} and
+\texttt{IntegrationPoint}); those additions describe genuinely new
+\emph{locations}, which is the correct use of that enumeration.
 
 \subsection{New MLL Functions}
 \label{sec:mll}
+
+\subsubsection{Design: Position-Based API}
+
+The API follows the pattern CGNS uses for every other optional scalar
+metadata child---\texttt{GridLocation}, \texttt{DataClass},
+\texttt{Rind}, \texttt{DimensionalUnits}, \texttt{Descriptor}: a single
+function pair that operates on the node at the current position, set by
+\texttt{cg\_goto}, backed by an internal
+\texttt{cgi\_\textit{x}\_address()} helper that resolves the current
+position to the relevant struct field and enumerates the legal parent
+labels.
+
+This is preferred over a family of explicit-index functions --- one per
+parent node type, in the style of
+
+\begin{quote}
+\texttt{cg\_sol\_dof\_storage\_write(fn,B,Z,S,type)} \\
+\texttt{cg\_discrete\_dof\_storage\_write(fn,B,Z,D,type)} \\
+\texttt{cg\_subreg\_dof\_storage\_write(fn,B,Z,SR,type)}
+\end{quote}
+
+\noindent plus matching readers and Fortran bindings --- because:
+
+\begin{itemize}[leftmargin=2em]
+\item Two C functions and two Fortran functions cover all four parent
+  node types, instead of six and six.
+\item Adding a fifth permitted parent later requires one line in the
+  address helper, not two new public functions plus Fortran bindings.
+\item The address helper locates an existing child \emph{by label}
+  (Section~\ref{sec:address}), so no node identifier needs to be cached
+  in the internal structures.  This removes a field from three structs
+  and eliminates a class of overwrite bug.
+\item It matches what users already do for the sibling property:
+  \texttt{cg\_goto(...); cg\_gridlocation\_write(CellCenter);}
+\end{itemize}
 
 \subsubsection{C API}
 
 \begin{lstlisting}[language=C]
 /*
- * Write the solution continuity for a FlowSolution_t node.
+ * Write the DOF storage layout of the node at the current position,
+ * which must have been set by cg_goto()/cg_gopath().
  *
- * fn   - file number
- * B    - base index
- * Z    - zone index
- * S    - solution index
- * type - DofStorage_t value
+ * Valid parent labels: FlowSolution_t, DiscreteData_t,
+ *                      ZoneSubRegion_t, UserDefinedData_t.
+ *
+ * DofStorage - DofStorage_t value.  Writing DofStorageNull removes
+ *              an existing DofStorage child, restoring the
+ *              "unspecified" state.
+ *
+ * Returns CG_OK, or CG_ERROR / CG_INCORRECT_PATH on failure.
  */
-int cg_sol_dof_storage_write(
-    int fn, int B, int Z, int S,
-    CGNS_ENUMT(DofStorage_t) type);
+CGNSDLL int cg_dof_storage_write(
+    CGNS_ENUMT(DofStorage_t) DofStorage);
 
 /*
- * Read the solution continuity for a FlowSolution_t node.
+ * Read the DOF storage layout of the node at the current position.
  *
- * fn   - file number
- * B    - base index
- * Z    - zone index
- * S    - solution index
- * type - [out] DofStorage_t value;
- *        returns DofStorageNull if node absent
- */
-int cg_sol_dof_storage_read(
-    int fn, int B, int Z, int S,
-    CGNS_ENUMT(DofStorage_t) *type);
-
-/*
- * Write/read the solution continuity for a DiscreteData_t node.
- * Same semantics as the FlowSolution_t counterparts.
+ * DofStorage - [out] DofStorage_t value.  Set to DofStorageNull,
+ *              with a CG_OK return, when the node has no
+ *              DofStorage child (legacy file or unset).
  *
- * fn   - file number
- * B    - base index
- * Z    - zone index
- * D    - discrete data index
- * type - DofStorage_t value
+ * Returns CG_OK, or CG_ERROR / CG_INCORRECT_PATH on failure.
  */
-int cg_discrete_dof_storage_write(
-    int fn, int B, int Z, int D,
-    CGNS_ENUMT(DofStorage_t) type);
-
-int cg_discrete_dof_storage_read(
-    int fn, int B, int Z, int D,
-    CGNS_ENUMT(DofStorage_t) *type);
-
-/*
- * Write/read the solution continuity for a ZoneSubRegion_t node.
- * Same semantics as the FlowSolution_t counterparts.
- *
- * fn   - file number
- * B    - base index
- * Z    - zone index
- * SR   - sub-region index
- * type - DofStorage_t value
- */
-int cg_subreg_dof_storage_write(
-    int fn, int B, int Z, int SR,
-    CGNS_ENUMT(DofStorage_t) type);
-
-int cg_subreg_dof_storage_read(
-    int fn, int B, int Z, int SR,
-    CGNS_ENUMT(DofStorage_t) *type);
+CGNSDLL int cg_dof_storage_read(
+    CGNS_ENUMT(DofStorage_t) *DofStorage);
 
 /*
  * Return the string name for a DofStorage_t value.
- * Matches the convention of cg_GridLocationName, cg_DataTypeName, etc.
+ * Matches the convention of cg_GridLocationName, cg_DataTypeName.
  * Returns NULL for out-of-range values.
  */
 CGNSDLL const char *cg_DofStorageName(
@@ -602,100 +764,69 @@ CGNSDLL const char *cg_DofStorageName(
 \textbf{Behavior:}
 
 \begin{itemize}[leftmargin=2em]
-\item The \texttt{\_write} functions create (or overwrite)
-  the \texttt{DofStorage} child node under the specified
-  \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t}, or
-  \texttt{ZoneSubRegion\_t} node.  Writing
-  \texttt{DofStorageNull} removes the node if present.
+\item \texttt{cg\_dof\_storage\_write} creates the
+  \texttt{DofStorage} child node under the node at the current
+  position.  In \texttt{CG\_MODE\_MODIFY}, an existing
+  \texttt{DofStorage} child is deleted first.  Writing
+  \texttt{DofStorageNull} deletes an existing child without creating a
+  replacement.
 
-\item The \texttt{\_read} functions return the value stored
-  in the \texttt{DofStorage} child node.  If the node does
-  not exist (legacy file or unset), they return
-  \texttt{DofStorageNull} without error.
+\item \texttt{cg\_dof\_storage\_read} returns the value cached in the
+  internal structure by the tree parser.  If the node does not exist
+  (legacy file or unset), it returns \texttt{CG\_OK} with
+  \texttt{DofStorageNull}, never an error.
+
+\item Both functions return \texttt{CG\_INCORRECT\_PATH} if the current
+  position is not one of the four permitted parent labels, matching
+  \texttt{cg\_gridlocation\_read}/\texttt{\_write} behavior.
 \end{itemize}
 
 \subsubsection{Fortran API}
 
 \begin{lstlisting}[language=Fortran]
-! FlowSolution_t
-subroutine cg_sol_dof_storage_write_f( &
-    fn, B, Z, S, continuity, ier)
-  integer, intent(in) :: fn, B, Z, S, continuity
+subroutine cg_dof_storage_write_f(dofStorage, ier)
+  integer, intent(in)  :: dofStorage
   integer, intent(out) :: ier
 
-subroutine cg_sol_dof_storage_read_f( &
-    fn, B, Z, S, continuity, ier)
-  integer, intent(in) :: fn, B, Z, S
-  integer, intent(out) :: continuity, ier
-
-! DiscreteData_t
-subroutine cg_discrete_dof_storage_write_f( &
-    fn, B, Z, D, continuity, ier)
-  integer, intent(in) :: fn, B, Z, D, continuity
+subroutine cg_dof_storage_read_f(dofStorage, ier)
+  integer, intent(out) :: dofStorage
   integer, intent(out) :: ier
-
-subroutine cg_discrete_dof_storage_read_f( &
-    fn, B, Z, D, continuity, ier)
-  integer, intent(in) :: fn, B, Z, D
-  integer, intent(out) :: continuity, ier
-
-! ZoneSubRegion_t
-subroutine cg_subreg_dof_storage_write_f( &
-    fn, B, Z, SR, continuity, ier)
-  integer, intent(in) :: fn, B, Z, SR, continuity
-  integer, intent(out) :: ier
-
-subroutine cg_subreg_dof_storage_read_f( &
-    fn, B, Z, SR, continuity, ier)
-  integer, intent(in) :: fn, B, Z, SR
-  integer, intent(out) :: continuity, ier
 \end{lstlisting}
 
 \subsection{Internal Data Structure Changes}
 
-The \texttt{cgns\_sol} structure (\texttt{FlowSolution\_t}),
-\texttt{cgns\_discrete} structure (\texttt{DiscreteData\_t}), and
-\texttt{cgns\_subreg} structure (\texttt{ZoneSubRegion\_t}) in
-\texttt{cgns\_header.h} each gain two fields:
+Four structures in \texttt{cgns\_header.h} each gain one field:
+\texttt{cgns\_sol} (for \texttt{FlowSolution\_t}),
+\texttt{cgns\_discrete} (for \texttt{DiscreteData\_t}),
+\texttt{cgns\_subreg} (for \texttt{ZoneSubRegion\_t}), and
+\texttt{cgns\_user\_data} (for \texttt{UserDefinedData\_t}).
 
 \begin{lstlisting}[language=C]
 typedef struct {            /* FlowSolution_t node */
     /* ... existing fields ... */
 
     /* CPEX 0050 */
-    CGNS_ENUMT(DofStorage_t) continuity;
-    double continuity_id;   /* CGIO node id for overwrite/delete */
+    CGNS_ENUMT(DofStorage_t) dof_storage;
 } cgns_sol;
 
-typedef struct {            /* DiscreteData_t node */
-    /* ... existing fields ... */
-
-    /* CPEX 0050 */
-    CGNS_ENUMT(DofStorage_t) continuity;
-    double continuity_id;
-} cgns_discrete;
-
-typedef struct {            /* ZoneSubRegion_t node */
-    /* ... existing fields ... */
-
-    /* CPEX 0050 */
-    CGNS_ENUMT(DofStorage_t) continuity;
-    double continuity_id;
-} cgns_subreg;
+/* cgns_discrete, cgns_subreg, and cgns_user_data gain the
+ * identically named and typed field. */
 \end{lstlisting}
 
-The \texttt{continuity} field defaults to
-\texttt{DofStorageNull} (value~0), which is the
-zero-initialization value and the ``not specified'' state.  The
-\texttt{continuity\_id} field stores the CGIO node identifier so
-that the write function can overwrite or delete the child node; it
-defaults to~0 (no node).
+The \texttt{dof\_storage} field defaults to
+\texttt{DofStorageNull} (value~0), which is both the
+zero-initialization value and the ``not specified'' state.
 
-\subsection{Internal Lookup Table Initialization}
+No node-identifier field is required.  The write path locates an
+existing child by label at write time (Section~\ref{sec:address}),
+exactly as \texttt{cgi\_location\_address} does for
+\texttt{GridLocation\_t}.  This mirrors the existing structures, which
+carry \texttt{location} but no \texttt{location\_id}.
 
-The string-to-enum mapping table must be initialized in
-\texttt{cgns\_internals.c} so that \texttt{cgi\_DofStorage()} can
-resolve the C1 character data stored in CGNS files:
+\subsection{Internal Lookup Table and String Mapping}
+
+The string table must be defined in \texttt{cgnslib.c} alongside
+\texttt{GridLocationName} and its siblings:
 
 \begin{lstlisting}[language=C]
 const char *DofStorageName[NofValidDofStorage] = {
@@ -706,8 +837,96 @@ const char *DofStorageName[NofValidDofStorage] = {
 };
 \end{lstlisting}
 
+A string-to-enum helper is added to \texttt{cgns\_internals.c},
+following \texttt{cgi\_GridLocation} exactly.  That includes its
+forward-compatibility behavior: an unrecognized string in a file
+written by a \emph{newer} library version degrades to
+\texttt{UserDefined} with a warning rather than failing.
+
+\begin{lstlisting}[language=C]
+int cgi_DofStorage(char *Name, CGNS_ENUMT(DofStorage_t) *type)
+{
+    int i;
+    for (i = 0; i < NofValidDofStorage; i++) {
+        if (strcmp(Name, DofStorageName[i]) == 0) {
+            (*type) = (CGNS_ENUMV(DofStorage_t))i;
+            return CG_OK;
+        }
+    }
+    if (cg->version > CGNSLibVersion) {
+        (*type) = CGNS_ENUMV(DofStorageUserDefined);
+        cgi_warning("Unrecognized DofStorage Type '%s' "
+                    "replaced with 'UserDefined'", Name);
+        return CG_OK;
+    }
+    cgi_error("Unrecognized DofStorage: %s", Name);
+    return CG_ERROR;
+}
+\end{lstlisting}
+
 \subsection{MLL Implementation Requirements}
 \label{sec:mll-impl}
+
+Throughout this section, \texttt{cg} is the file-scope
+current-file pointer used internally by \texttt{cgnslib.c}, and
+\texttt{posit} is the file-scope current-position record maintained by
+\texttt{cg\_goto}.  Neither is declared in the listings, matching the
+surrounding library code.
+
+\subsubsection{Address Resolution Function (\texttt{cgns\_internals.c})}
+\label{sec:address}
+
+\begin{lstlisting}[language=C]
+CGNS_ENUMT(DofStorage_t) *cgi_dof_storage_address(
+    int local_mode, int *ier)
+{
+    double *id, parent_id;
+    CGNS_ENUMT(DofStorage_t) *dof_storage = 0;
+    int nnod;
+
+    if (posit == 0) {
+        cgi_error("No current position set by cg_goto\n");
+        (*ier) = CG_ERROR;
+        return CG_OK;
+    }
+
+    /* Possible parents for DofStorage_t: FlowSolution_t,
+     * DiscreteData_t, ZoneSubRegion_t, UserDefinedData_t */
+    if (strcmp(posit->label, "FlowSolution_t") == 0)
+        ADDRESS4SINGLE_ALLOC(cgns_sol, dof_storage)
+    else if (strcmp(posit->label, "DiscreteData_t") == 0)
+        ADDRESS4SINGLE_ALLOC(cgns_discrete, dof_storage)
+    else if (strcmp(posit->label, "ZoneSubRegion_t") == 0)
+        ADDRESS4SINGLE_ALLOC(cgns_subreg, dof_storage)
+    else if (strcmp(posit->label, "UserDefinedData_t") == 0)
+        ADDRESS4SINGLE_ALLOC(cgns_user_data, dof_storage)
+    else {
+        cgi_error("DofStorage_t node not supported under "
+                  "'%s' type node", posit->label);
+        (*ier) = CG_INCORRECT_PATH;
+        return CG_OK;
+    }
+
+    /* On modify, delete any existing child, located by label */
+    if (cg->mode == CG_MODE_MODIFY &&
+        local_mode == CG_MODE_WRITE) {
+        if (cgi_get_nodes(parent_id, "DofStorage_t", &nnod, &id))
+            return CG_OK;
+        if (nnod > 0) {
+            if (cgi_delete_node(parent_id, id[0])) {
+                (*ier) = CG_ERROR;
+                return CG_OK;
+            }
+            CGNS_FREE(id);
+        }
+    }
+    return dof_storage;
+}
+\end{lstlisting}
+
+Locating the existing child by label is what makes a cached node
+identifier unnecessary, and is why the overwrite path cannot create a
+duplicate child.
 
 \subsubsection{Internal Tree Parser Update (\texttt{cgns\_internals.c})}
 
@@ -716,151 +935,109 @@ crawls the HDF5/CGIO tree and populates
 internal C structures.  The parser must be updated to recognize child
 nodes with label \texttt{DofStorage\_t} during the
 traversal of \texttt{FlowSolution\_t} (\texttt{cgi\_read\_sol}),
-\texttt{DiscreteData\_t} (\texttt{cgi\_read\_discrete}), and
-\texttt{ZoneSubRegion\_t} (\texttt{cgi\_read\_subregion}).
+\texttt{DiscreteData\_t} (\texttt{cgi\_read\_discrete}),
+\texttt{ZoneSubRegion\_t} (\texttt{cgi\_read\_subregion}), and
+\texttt{UserDefinedData\_t} (\texttt{cgi\_read\_user\_data}).
 
 The required behavior is:
 
 \begin{enumerate}[leftmargin=2em]
-\item During memory allocation of \texttt{cgns\_sol},
-  \texttt{cgns\_discrete}, and \texttt{cgns\_subreg}, the
-  \texttt{continuity} field is zero-initialized, which corresponds
+\item During memory allocation of the parent structure, the
+  \texttt{dof\_storage} field is zero-initialized, which corresponds
   to \texttt{DofStorageNull}.
 \item During the child-node traversal, if a child with label
   \texttt{"DofStorage\_t"} is found, read its C1 string
   data and map it to the enum value via
-  \texttt{cgi\_DofStorage(string\_data, \&continuity)}.
-  Store the result in the struct's \texttt{continuity} field.
+  \texttt{cgi\_DofStorage(string\_data, \&dof\_storage)}.
 \item If no such child node exists, the field retains its default
   \texttt{DofStorageNull} value.
 \end{enumerate}
 
 This follows the existing pattern used for \texttt{GridLocation\_t}
-parsing in \texttt{cgi\_read\_sol}.
+parsing in \texttt{cgi\_read\_sol}.  No node identifier is stored;
+see Section~\ref{sec:address}.
 
-\subsubsection{Read Function Error Handling}
-
-The \texttt{\_read} functions (e.g.,
-\texttt{cg\_sol\_continuity\_read}) return the cached struct field
-rather than performing a fresh HDF5 read.  Because the internal tree
-parser already handles the absent-node case by leaving the field at
-\texttt{DofStorageNull}, the read function simply returns
-the struct value and \texttt{CG\_OK}:
+\subsubsection{Read Function Implementation}
 
 \begin{lstlisting}[language=C]
-int cg_sol_dof_storage_read(int fn, int B, int Z, int S,
-                           CGNS_ENUMT(DofStorage_t) *type) {
-    cgns_sol *sol;
+int cg_dof_storage_read(CGNS_ENUMT(DofStorage_t) *DofStorage)
+{
+    CGNS_ENUMT(DofStorage_t) *dof_storage;
+    int ier = 0;
 
-    cg = cgi_get_file(fn);
-    if (cg == 0) return CG_ERROR;
+    CHECK_FILE_OPEN
 
     if (cgi_check_mode(cg->filename, cg->mode, CG_MODE_READ))
         return CG_ERROR;
 
-    sol = cgi_get_sol(cg, B, Z, S);
-    if (sol == NULL) return CG_ERROR;
+    dof_storage = cgi_dof_storage_address(CG_MODE_READ, &ier);
+    if (dof_storage == 0) return ier;
 
-    *type = sol->continuity;
-
+    (*DofStorage) = (*dof_storage);
     return CG_OK;
 }
 \end{lstlisting}
 
-This architecture avoids the need to intercept
-\texttt{CG\_NODE\_NOT\_FOUND} errors at read time---the absent-node
-case is handled once during file open, and all subsequent reads are
-served from the in-memory cache.  Legacy code that iterates over
-solutions and queries the continuity will always receive
-\texttt{CG\_OK} with \texttt{DofStorageNull} for files
-that predate this CPEX.
+Because the tree parser already handles the absent-node case by leaving
+the field at \texttt{DofStorageNull}, the read function simply returns
+the cached value and \texttt{CG\_OK}.  This avoids any need to intercept
+\texttt{CG\_NODE\_NOT\_FOUND} at read time: the absent-node case is
+handled once during file open, and all subsequent reads are served from
+the in-memory cache.  Legacy code that iterates over solutions and
+queries the DOF storage layout will always receive \texttt{CG\_OK} with
+\texttt{DofStorageNull} for files that predate this CPEX.
 
 \subsubsection{Write Function Implementation}
 
-The \texttt{\_write} functions create (or overwrite) the
-\texttt{DofStorage} child node.  Writing
-\texttt{DofStorageNull} removes the node if present,
-restoring the ``unspecified'' state.  The reference implementation for
-\texttt{FlowSolution\_t} is shown below; the
-\texttt{DiscreteData\_t} and \texttt{ZoneSubRegion\_t} variants are
-analogous (substituting the appropriate internal structure accessor).
-
 \begin{lstlisting}[language=C]
-int cg_sol_dof_storage_write(int fn, int B, int Z, int S,
-                            CGNS_ENUMT(DofStorage_t) type) {
-    cgns_sol *sol;
-    cgsize_t length;
-    double posit_id;
+int cg_dof_storage_write(CGNS_ENUMT(DofStorage_t) DofStorage)
+{
+    CGNS_ENUMT(DofStorage_t) *dof_storage;
+    int ier = 0;
+    cgsize_t dim_vals;
+    double posit_id, dummy_id;
 
-    cg = cgi_get_file(fn);
-    if (cg == 0) return CG_ERROR;
+    CHECK_FILE_OPEN
 
     if (cgi_check_mode(cg->filename, cg->mode, CG_MODE_WRITE))
         return CG_ERROR;
 
-    sol = cgi_get_sol(cg, B, Z, S);
-    if (sol == NULL) return CG_ERROR;
-
-    /* Validate enum value */
-    switch (type) {
-        case CGNS_ENUMV(DofStorageNull):
-        case CGNS_ENUMV(DofStorageUserDefined):
-        case CGNS_ENUMV(Shared):
-        case CGNS_ENUMV(Independent):
-            break;
-        default:
-            cgi_error("Invalid DofStorage value: %d", (int)type);
-            return CG_ERROR;
+    if (INVALID_ENUM(DofStorage, NofValidDofStorage)) {
+        cgi_error("Invalid DofStorage value: %d", (int)DofStorage);
+        return CG_ERROR;
     }
 
-    /* Delete existing node if writing Null */
-    if (type == CGNS_ENUMV(DofStorageNull)) {
-        if (sol->continuity !=
-                CGNS_ENUMV(DofStorageNull)) {
-            if (cgi_delete_node(sol->id,
-                    sol->continuity_id))
-                return CG_ERROR;
-            sol->continuity =
-                CGNS_ENUMV(DofStorageNull);
-            sol->continuity_id = 0;
-        }
-        return CG_OK;
-    }
+    /* Resolves the parent, and on modify deletes any
+     * existing DofStorage child (located by label). */
+    dof_storage = cgi_dof_storage_address(CG_MODE_WRITE, &ier);
+    if (dof_storage == 0) return ier;
 
-    /* Delete existing node before overwrite */
-    if (sol->continuity !=
-            CGNS_ENUMV(DofStorageNull)) {
-        if (cgi_delete_node(sol->id,
-                sol->continuity_id))
-            return CG_ERROR;
-        sol->continuity_id = 0;
-    }
+    (*dof_storage) = DofStorage;
 
-    /* Create the child node */
-    length = (cgsize_t)strlen(
-        DofStorageName[type]);
-    if (cgi_new_node(sol->id, "DofStorage",
-            "DofStorage_t", &posit_id,
-            "C1", 1, &length,
-            (void *)DofStorageName[type]))
+    /* Null means "unspecified": record nothing on disk.  Any
+     * pre-existing child was removed by the address helper. */
+    if (DofStorage == CGNS_ENUMV(DofStorageNull)) return CG_OK;
+
+    if (cgi_posit_id(&posit_id)) return CG_ERROR;
+    dim_vals = (cgsize_t)strlen(DofStorageName[DofStorage]);
+    if (cgi_new_node(posit_id, "DofStorage", "DofStorage_t",
+            &dummy_id, "C1", 1, &dim_vals,
+            (void *)DofStorageName[DofStorage]))
         return CG_ERROR;
 
-    sol->continuity = type;
-    sol->continuity_id = posit_id;
     return CG_OK;
 }
 \end{lstlisting}
 
-\textbf{Note:} The \texttt{continuity\_id} field (a \texttt{double}
-storing the CGIO node identifier) must be added to the internal
-structures alongside the \texttt{continuity} field so that the
-node can be located for overwrite or deletion.  This follows the
-pattern used by other optional child nodes in the MLL (e.g.,
-\texttt{GridLocation} tracking via \texttt{location\_id} fields in
-some internal paths).
+Two details are worth noting.  First, validation uses the library's own
+\texttt{INVALID\_ENUM(E,EMAX)} macro from \texttt{cgns\_header.h}, as
+\texttt{cg\_gridlocation\_write} does, rather than an open-coded
+\texttt{switch}.  Second, no node identifier is stored after
+\texttt{cgi\_new\_node} returns, because the address helper will find
+the node by label on any subsequent write.
 
 %% ─────────────────────────────────────────────────────────────────────────
-\subsection{Data Layout for Discontinuous Solutions at Shared Mesh Vertices}
+\subsection{Data Layout for Independent DOFs at Shared Mesh Vertices}
 \label{sec:shared-vertex-layout}
 
 A common and important case arises when a DG solver uses a mesh whose
@@ -881,7 +1058,7 @@ tells readers these repeated entries represent independent DOFs, not
 duplicate data.
 
 Without the \texttt{DofStorage\_t} node, a reader cannot
-distinguish this layout from a malformed continuous solution with
+distinguish this layout from a malformed shared-DOF solution with
 duplicate entries, which is why the node is necessary.  With it, a
 post-processor or coupling framework can correctly:
 
@@ -892,10 +1069,80 @@ post-processor or coupling framework can correctly:
   shared interfaces.
 \end{itemize}
 
+\subsubsection{Applicability and Restrictions}
+\label{sec:ptlist-restrictions}
+
+This encoding is subject to the following restrictions, which the
+SIDS amendment in Section~\ref{sec:sids-impact} makes normative.
+
+\textbf{Unstructured zones only.}  The DOF ordering is defined by
+traversal of the zone's \texttt{Elements\_t} sections, which structured
+zones do not have.  The encoding is therefore valid only for
+\texttt{ZoneType\_t = Unstructured}.  Structured zones have no way to
+express independent DOFs at shared vertices, and this CPEX does not
+add one.  A structured solver with element-local DOFs should either
+store cell-centered data (\texttt{GridLocation\_t = CellCenter}, which
+is unambiguously independent) or convert the affected region to an
+unstructured zone.  Note that CPEX~0045's \texttt{InterpolationOrders}
+child is likewise ``recognized only for \texttt{Unstructured}
+zones,'' so the high-order route is not a structured fallback either.
+
+\textbf{The \texttt{PointList} must cover every element of the zone.}
+The ordering rule below is a traversal of the zone's elements; a
+\texttt{PointList} covering only some elements has no defined anchor
+into that traversal.  A partial-coverage independent solution should
+use \texttt{GridLocation\_t = InterpolationPoints} (CPEX~0045) or
+\texttt{IntegrationPoint} (CPEX~0047), both of which carry explicit
+per-element element-index lists.
+
+\textbf{Element type support.}  Fixed-size element types and
+\texttt{MIXED} and \texttt{NGON\_n} sections are supported.
+\texttt{NFACE\_n} is \emph{not}: a polyhedral element's vertices are
+defined only indirectly, through its constituent faces, and CGNS
+defines no canonical vertex ordering for such an element, so ``the
+element's vertices in order'' is not well defined.  Zones containing
+\texttt{NFACE\_n} sections must use
+\texttt{GridLocation\_t = InterpolationPoints} or
+\texttt{IntegrationPoint} for independent DOFs.
+
+\textbf{\texttt{Rind\_t} must not be combined with this encoding.}
+The \texttt{PointList} already enumerates every DOF explicitly, so
+there is no separate rind extent to declare, and the SIDS defines no
+ordering for rind entries within a point set.  \texttt{Rind\_t}
+remains fully usable with \texttt{DofStorage\_t = Independent} when no
+point set is present; see Section~\ref{sec:rind-interaction}.
+
+\textbf{Storage overhead.}  Because the \texttt{PointList} is, by
+construction, the concatenation of the zone's element connectivity, it
+duplicates data already present in the \texttt{Elements\_t} sections at
+a cost of one \texttt{cgsize\_t} per DOF.  This is exactly the
+conflation of dof-relation and topo-relation that
+Miller~\cite{miller2003} describes.  The encoding exists because it is
+the only way to keep \texttt{GridLocation\_t = Vertex}---and therefore
+the shared-vertex connectivity used for geometry operations---while
+storing independent values.  When that is not required,
+\texttt{InterpolationPoints} or \texttt{IntegrationPoint} is the
+preferred encoding: both size the array from per-element DOF counts
+without a redundant index list.
+
+\subsubsection{Other Grid Locations}
+
 For element-local DOFs at non-vertex positions (interior quadrature
-points, face quadrature points, etc.), use
-\texttt{GridLocation\_t = InterpolationPoints} with
-\texttt{SolutionInterpolation\_t} metadata from CPEX~0045.
+points, face quadrature points, etc.) under \texttt{FlowSolution\_t},
+use \texttt{GridLocation\_t = InterpolationPoints} with CPEX~0045
+metadata, or \texttt{GridLocation\_t = IntegrationPoint} with CPEX~0047
+metadata.  Both are restricted by their respective proposals:
+CPEX~0045 states that \texttt{InterpolationPoints} ``is valid only on
+\texttt{FlowSolution\_t} nodes,'' and CPEX~0047 permits
+\texttt{IntegrationPoint} under \texttt{FlowSolution\_t},
+\texttt{ZoneSubRegion\_t}, \texttt{BC\_t}, and
+\texttt{BCDataSet\_t}.  Consequently \texttt{DiscreteData\_t} has no
+standard encoding for element-local DOFs at non-vertex positions;
+\texttt{DofStorage\_t = Independent} on a \texttt{DiscreteData\_t} node
+is meaningful for \texttt{CellCenter} data, and for vertex data under
+the \texttt{PointList} encoding above, but not otherwise.  Closing
+that gap is out of scope here.
+
 \texttt{GridLocation\_t = Vertex} with a \texttt{PointList} is
 specifically the correct choice when the DOF positions coincide with
 mesh vertices and the shared-vertex mesh connectivity is to be
@@ -914,32 +1161,49 @@ necessary per-element DOF ordering.
 remains valid since cell-centered data is inherently one value per
 element with no shared-entity ambiguity.
 
-This approach extends naturally to mixed-element meshes
-(\texttt{MIXED}, \texttt{NGON\_n}, \texttt{NFACE\_n}).  The
-\texttt{PointList} simply lists vertex indices for each element in
-element order; elements with different vertex counts contribute
-different numbers of entries.  The \texttt{DofStorage\_t =
-Independent} flag tells readers that repeated vertex indices
-represent independent DOFs regardless of element type heterogeneity.
+\subsubsection{DOF Ordering Rule}
+\label{sec:ordering-rule}
 
-\textbf{SIDS Amendment (PointList semantics under Discontinuous solutions):}
-When \texttt{DofStorage\_t = Independent} and a
-\texttt{PointList} is present under \texttt{FlowSolution\_t} with
-\texttt{GridLocation\_t = Vertex}, repeated vertex indices are
-permitted and represent element-local DOFs.  The DOF-to-element
-mapping is defined by traversal of the zone's \texttt{Elements\_t}
-sections in ascending section index order, then by each section's
-connectivity array order.  Solution array position $i$ corresponds to
-the $i$-th entry of the \texttt{PointList} under this traversal.
-This is an explicit amendment to the \texttt{PointList} description in
-SIDS~§7.7 for this case; repeated indices under a continuous solution
-remain undefined and invalid.
+\textbf{SIDS Amendment ---
+\texttt{PointList} semantics for independent DOFs.}
+When \texttt{DofStorage\_t} is \texttt{Independent} and a
+\texttt{PointList} is present, with
+\texttt{GridLocation\_t = Vertex}, under any of
+\texttt{FlowSolution\_t}, \texttt{DiscreteData\_t},
+\texttt{ZoneSubRegion\_t}, or \texttt{UserDefinedData\_t},
+repeated vertex indices are
+permitted and represent element-local DOFs.  Solution array position
+$i$ corresponds to the $i$-th entry of the \texttt{PointList}, and the
+\texttt{PointList} shall be constructed as follows:
 
-\textbf{Note:} For element-local DOFs at non-vertex positions, or
-when the implicit element-ordering covenant above is inconvenient,
-\texttt{GridLocation\_t = InterpolationPoints} with
-\texttt{SolutionInterpolation\_t} from CPEX~0045 is the preferred
-encoding and does not require repeated indices.
+\begin{enumerate}[leftmargin=2em]
+\item Traverse the zone's elements in ascending \textbf{element index}
+  order.  Element indices are the global, zone-wide indices defined by
+  each \texttt{Elements\_t} section's \texttt{ElementRange}; they are
+  \emph{not} the section storage order, and sections are not required
+  to be stored in ascending \texttt{ElementRange} order.
+
+\item Within each element, list the element's vertex indices in the
+  canonical vertex order defined for its element type in
+  SIDS~\S7.3.
+
+\item For \texttt{MIXED} sections, the element-type code that precedes
+  each element's vertex list in the connectivity array is not a DOF and
+  is not listed.
+
+\item For \texttt{NGON\_n} sections, list the face's vertex indices in
+  connectivity order; the per-element vertex count varies and the
+  \texttt{PointList} length is the sum over all elements.
+\end{enumerate}
+
+Repeated indices under \texttt{DofStorage\_t = Shared},
+\texttt{DofStorageUserDefined}, or \texttt{DofStorageNull} remain
+undefined and invalid.  This amendment does not affect
+\texttt{PointList} semantics under any other condition.
+
+Because the \texttt{PointList} must equal the traversal above, a
+validator can check it exactly against the \texttt{Elements\_t}
+connectivity; see Section~\ref{sec:cgnscheck}.
 
 See Example~\ref{ex:shared-vertex-dg} for the complete C encoding
 of this pattern.
@@ -948,9 +1212,9 @@ of this pattern.
 \subsection{Interaction with \texttt{Rind\_t} (Ghost Layers)}
 \label{sec:rind-interaction}
 
-\texttt{DofStorage\_t} applies uniformly to the entire
-solution field, including any rind (ghost) entries declared by
-\texttt{Rind\_t}.  A \texttt{Independent} label means that
+When no point set is present, \texttt{DofStorage\_t} applies uniformly
+to the entire solution field, including any rind (ghost) entries
+declared by \texttt{Rind\_t}.  An \texttt{Independent} label means that
 all data entries---interior and rind alike---are element-local: each
 rind entry belongs to one element and must not be interpreted as a
 shared vertex value.  DG solvers that use ghost layers for MPI halo
@@ -958,16 +1222,24 @@ exchange may therefore store element-local rind DOFs in the standard
 way; the \texttt{Independent} label covers them.  Rind
 entries of a \texttt{Shared} solution retain their usual
 shared-DOF semantics.  No special treatment of the rind is required
-beyond what \texttt{Rind\_t} already specifies; the continuity label
+beyond what \texttt{Rind\_t} already specifies; the DOF storage label
 is consistent across the full data array.
+
+As stated in Section~\ref{sec:ptlist-restrictions}, \texttt{Rind\_t}
+must not be combined with the \texttt{Vertex} + \texttt{Independent} +
+\texttt{PointList} encoding, because the SIDS defines no position for
+rind entries within a point set.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Interaction with CPEX 0045 (Higher-Order Elements)}
 %% ═════════════════════════════════════════════════════════════════════════
 
-CPEX~0045 introduced \texttt{GridLocation\_t = InterpolationPoints},
-\texttt{SolutionInterpolation\_t}, and the concept of per-element-type
-polynomial basis definitions.  The present CPEX complements rather
+CPEX~0045~\cite{cpex0045} introduced
+\texttt{GridLocation\_t = InterpolationPoints}, the
+\texttt{InterpolationOrders} and \texttt{CharacteristicLength} children
+of \texttt{FlowSolution\_t}, and the
+\texttt{SolutionInterpolation\_t} and \texttt{ElementInterpolation\_t}
+children of \texttt{Family\_t}.  The present CPEX complements rather
 than modifies that infrastructure:
 
 \begin{itemize}[leftmargin=2em]
@@ -983,34 +1255,133 @@ higher-order solution field.  They are orthogonal:
 \begin{center}
 \begin{tabular}{lcc}
 \toprule
-& \textbf{Continuous} & \textbf{Discontinuous} \\
+& \textbf{Shared} & \textbf{Independent} \\
 \midrule
 Lagrange $p=1$ & CG FEM & DG $p=1$ \\
 Lagrange $p=3$ & CG spectral & DG spectral \\
 Hierarchical $p=2$ & CG (modal) & DG (modal) \\
-$p=0$ (constant) & --- & FV / DG $p=0$ \\
+$p=0$ (constant) & n/a$^{\dagger}$ & FV / DG $p=0$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
+\noindent{\small $^{\dagger}$~A $p=0$ basis has no interface DOFs to
+share: its single per-element DOF has no geometric support on the
+element boundary.  \texttt{Shared} is therefore not merely unusual at
+$p=0$ but meaningless, and \texttt{cgnscheck} should warn on it
+(Section~\ref{sec:cgnscheck}).}
+
+\subsection{Recommended Practice}
+
 For higher-order solutions using \texttt{GridLocation\_t =
-InterpolationPoints}, the recommended practice is:
+InterpolationPoints}:
 
 \begin{enumerate}[leftmargin=2em]
 \item Use CPEX~0045 to define the element type, interpolation basis,
-  and polynomial order via \texttt{SolutionInterpolation\_t}.
+  and polynomial order via \texttt{SolutionInterpolation\_t} on the
+  \texttt{Family\_t} and \texttt{InterpolationOrders} on the
+  \texttt{FlowSolution\_t}.
 \item Use this CPEX to set \texttt{DofStorage\_t} on the
-  \texttt{FlowSolution\_t} node to indicate whether the field is
-  continuous or discontinuous.
+  \texttt{FlowSolution\_t} node.
 \end{enumerate}
 
+Examples~\ref{ex:dg-write} and~\ref{ex:hdg} show both steps.
+
 For lower-order solutions using \texttt{GridLocation\_t = Vertex} or
-\texttt{CellCenter}, this CPEX can be used independently of CPEX~0045.
+\texttt{CellCenter}, this CPEX can be used independently of CPEX~0045;
+see Examples~\ref{ex:cg-write} and~\ref{ex:fv}.
 See Section~\ref{sec:shared-vertex-layout} for the prescribed data
-layout when DG DOFs coincide with shared mesh vertices.
+layout when independent DOFs coincide with shared mesh vertices.
+
+\subsection{\texttt{DofStorage\_t} Under \texttt{InterpolationPoints}}
+\label{sec:dofstorage-interp}
+
+Under \texttt{GridLocation\_t = InterpolationPoints}, CPEX~0045
+defines the field-array length as
+\[
+  L \;=\; \sum_{e \in \mathcal{E}} N_{\mathrm{DOFs}}(e),
+\]
+where $\mathcal{E}$ is the set of elements covered by the block---all
+zone elements when no \texttt{PointRange}/\texttt{PointList} is
+present, or the listed elements otherwise---with each element's DOFs
+stored contiguously.  Because the array is a concatenation of
+per-element DOF blocks, the following rules apply:
+
+\begin{itemize}[leftmargin=2em]
+\item \texttt{DofStorage\_t = Independent} is the layout's natural
+  reading and requires no additional metadata.  It is the expected
+  value for volume DG and spectral-element blocks.
+
+\item \texttt{DofStorage\_t = Shared} is permitted \emph{only} when
+  the block's element set consists of interface (face or edge)
+  elements, listed explicitly by a \texttt{PointList} or
+  \texttt{PointRange} over the element indices of the corresponding
+  face or edge \texttt{Elements\_t} section(s).  The shared reading is
+  then: each listed interface element's DOF block is shared between the
+  volume elements adjacent to it.  This is the HDG trace case
+  (Example~\ref{ex:hdg}).
+
+\item \texttt{DofStorage\_t = Shared} on a block whose element set is
+  the zone's volume elements---in particular, any
+  \texttt{InterpolationPoints} block with \emph{no} point set---is
+  \textbf{invalid}.  Under that sizing each interface DOF would appear
+  once per adjacent volume element, which contradicts the definition of
+  \texttt{Shared}.  \texttt{cgnscheck} should report this as an error
+  (Section~\ref{sec:cgnscheck}).
+\end{itemize}
+
+%% ═════════════════════════════════════════════════════════════════════════
+\section{Interaction with CPEX 0047 (Integration Points)}
+%% ═════════════════════════════════════════════════════════════════════════
+
+CPEX~0047~\cite{cpex0047} introduces
+\texttt{GridLocation\_t = IntegrationPoint}, quadrature-rule
+definitions, and an \texttt{ItgPointsStartOffset} array giving the
+starting position of each element's integration-point data within the
+solution array.  It permits that grid location under
+\texttt{FlowSolution\_t}, \texttt{ZoneSubRegion\_t}, \texttt{BC\_t},
+and \texttt{BCDataSet\_t}.
+
+The two proposals are complementary and do not conflict:
+
+\begin{itemize}[leftmargin=2em]
+\item \textbf{CPEX~0047 supplies an explicit dof-map for one grid
+  location.}  \texttt{ItgPointsStartOffset} is precisely the
+  per-element offset array whose absence motivates
+  Section~\ref{sec:shared-vertex-layout}.  Where it applies, it is a
+  better mechanism than the redundant \texttt{PointList} encoding, and
+  this CPEX recommends it over that encoding.
+
+\item \textbf{\texttt{IntegrationPoint} data is inherently
+  independent.}  Integration points are interior to elements and the
+  offset array assigns a disjoint slice of the array to each element,
+  so \texttt{DofStorage\_t = Independent} is the only valid value under
+  \texttt{GridLocation\_t = IntegrationPoint}.  Recording it remains
+  useful for uniform reader dispatch, but adds no information a reader
+  could not derive; \texttt{Shared} under this location should be
+  reported as an error by \texttt{cgnscheck}.
+
+\item \textbf{CPEX~0047 does not subsume this proposal.}  It says
+  nothing about vertex-, edge-, or face-located DOFs, which is where
+  the shared/independent ambiguity actually bites, and it does not
+  cover \texttt{DiscreteData\_t}.
+
+\item \textbf{Boundary data.}  CPEX~0047 extends \texttt{BC\_t} and
+  \texttt{BCDataSet\_t}; this CPEX deliberately does not
+  (Design Decision~\ref{dd:bcdata}).  Should per-BC DOF storage
+  metadata later prove necessary, the two proposals' boundary
+  extensions should be reconciled in that follow-on work.
+\end{itemize}
+
+One editorial concern spans the two proposals: CPEX~0045's
+\texttt{InterpolationPoints} and CPEX~0047's \texttt{IntegrationPoint}
+are similar names for different \texttt{GridLocation\_t} values.  That
+is a matter for the editors of those proposals, but readers of this one
+should note the distinction.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Backward Compatibility}
+\label{sec:compat}
 %% ═════════════════════════════════════════════════════════════════════════
 
 \begin{itemize}[leftmargin=2em]
@@ -1022,142 +1393,269 @@ layout when DG DOFs coincide with shared mesh vertices.
 \item \textbf{Existing readers:} Unaffected.  Per the CGNS convention,
   readers silently ignore unknown child nodes.  An older library
   reading a file with \texttt{DofStorage} nodes will
-  simply skip them.
+  simply skip them.  \texttt{cgnscheck} validates only the child
+  labels it knows about and does not enumerate or warn on unrecognized
+  ones, so existing validation runs are unaffected as well.
 
 \item \textbf{Existing writers:} Unaffected.  Codes that do not call
   the new API functions produce files without
   \texttt{DofStorage} nodes, identical to the current
   behavior.
 
+\item \textbf{Newer-to-older direction:} A file written by a future
+  library with an additional \texttt{DofStorage\_t} value will be read
+  by a CPEX-0050-era library as \texttt{DofStorageUserDefined} with a
+  warning, not an error, because \texttt{cgi\_DofStorage} follows
+  \texttt{cgi\_GridLocation}'s forward-compatibility rule.
+
 \item \textbf{ABI:} The \texttt{cgns\_sol}, \texttt{cgns\_discrete},
-  and \texttt{cgns\_subreg} structures each grow by two fields (one
-  \texttt{int}-sized enum and one \texttt{double} node identifier).
+  \texttt{cgns\_subreg}, and \texttt{cgns\_user\_data} structures each
+  grow by one \texttt{int}-sized enum field.
   This is an ABI change requiring recompilation of code that directly
   accesses the internal structures.  The public API is purely additive
   (new functions, new enum), so no existing function signatures change.
-
-\item \textbf{Parallel I/O (\texttt{cgp\_*}):} The
-  \texttt{DofStorage} metadata node is a small scalar
-  child of \texttt{FlowSolution\_t} and carries no per-element data.
-  It is written and read via the standard collective-write /
-  independent-read model, identical to how \texttt{GridLocation} is
-  handled in the parallel MLL.  No new \texttt{cgp\_*} variants are
-  required.
 \end{itemize}
+
+\subsection{Parallel I/O}
+
+No new \texttt{cgp\_*} functions are required, but the constraint under
+which the serial functions may be used in a parallel program must be
+stated explicitly.
+
+The parallel MLL (\texttt{pcgnslib.c}) contains no handling of
+\texttt{GridLocation}, \texttt{DataClass}, or any other scalar metadata
+child; such nodes are written by the serial MLL even in parallel
+programs.  \texttt{DofStorage} follows suit.  Because writing it
+creates---and, on modify, deletes---an HDF5 group, and HDF5 structural
+modification under MPI-IO is a collective operation:
+
+\begin{itemize}[leftmargin=2em]
+\item \texttt{cg\_dof\_storage\_write} \textbf{shall} be called by all
+  ranks in the communicator, with identical arguments and from an
+  identical current position.
+\item The same applies to the \texttt{cg\_goto} call that establishes
+  the position.
+\item \texttt{cg\_dof\_storage\_read} may be called independently once
+  the file is open, since it is served entirely from the in-memory
+  structure populated at open time.
+\end{itemize}
+
+This is the same rule that already governs \texttt{cg\_sol\_write},
+\texttt{cg\_gridlocation\_write}, and every other metadata-creating
+serial call used alongside \texttt{cgp\_*} data transfers; it is stated
+here because the proposal adds a new call subject to it.
+
+\subsection{Interpreting Legacy Data (\texttt{DofStorageNull})}
+\label{sec:legacy-inference}
+
+\texttt{DofStorageNull} means \emph{unspecified}, not ``shared.''  A
+reader must not silently substitute a default.  The following
+inference rules are recommended---non-normatively---for readers that
+must nevertheless act on files predating this CPEX:
+
+\begin{description}[leftmargin=2em]
+\item[\texttt{CellCenter}, \texttt{FaceCenter}, \texttt{EdgeCenter},
+  \texttt{[IJK]FaceCenter}] Treat as \texttt{Independent}.  There is
+  exactly one value per entity and no shared-entity ambiguity.
+
+\item[\texttt{Vertex} with $\texttt{DataSize} = \texttt{VertexSize}$]
+  Treat as \texttt{Shared}.  Before this CPEX, the SIDS
+  \texttt{DataSize} formula admitted no other layout at this size.
+
+\item[\texttt{Vertex} with a \texttt{PointList}] Unspecified.  A
+  legacy file gives no way to tell an independent-DOF layout from a
+  genuine vertex subset.  Readers should surface the ambiguity rather
+  than guess.
+
+\item[\texttt{InterpolationPoints} (CPEX~0045)] Treat as
+  \texttt{Independent}, per Section~\ref{sec:dofstorage-interp}.
+
+\item[\texttt{IntegrationPoint} (CPEX~0047)] Treat as
+  \texttt{Independent}.
+\end{description}
+
+Note that these rules make no ``assume shared for backward
+compatibility'' blanket assumption: since most CFD files are
+cell-centered finite volume, such an assumption would be wrong for the
+majority of existing data.  Example~\ref{ex:restart} shows a restart
+reader applying this dispatch.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Examples}
 %% ═════════════════════════════════════════════════════════════════════════
 
-\subsection{Example 1: Writing a Continuous Galerkin Solution (C)}
+All examples use the position-based API: \texttt{cg\_goto} to the
+target node, then \texttt{cg\_dof\_storage\_write}.  Error checking is
+omitted for brevity; production code must check every return value.
+
+\subsection{Example 1: Writing a Shared-DOF (CG) Solution}
 \label{ex:cg-write}
 
 \begin{lstlisting}[language=C]
 /* Create a vertex-located solution node */
-int S;
+int S, F;
 cg_sol_write(fn, B, Z, "FlowSolution", CGNS_ENUMV(Vertex), &S);
 
-/* Mark as continuous (CG FEM) */
-cg_sol_dof_storage_write(fn, B, Z, S,
-    CGNS_ENUMV(Shared));
+/* Mark DOFs as shared (CG FEM) */
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+cg_dof_storage_write(CGNS_ENUMV(Shared));
 
 /* Write solution data (one value per mesh vertex, shared) */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
     "Pressure", pressure, &F);
 \end{lstlisting}
 
-\subsection{Example 2: Writing a Discontinuous Galerkin Solution (C)}
+\subsection{Example 2: Writing an Independent-DOF (DG) Solution}
 \label{ex:dg-write}
 
 \begin{lstlisting}[language=C]
-/* Create an interpolation-point-located solution node */
-int S;
+/* Create an interpolation-point-located solution node.
+ * Per CPEX 0045, a block covering the whole zone at uniform
+ * order needs no point set; DataSize is the sum of the
+ * per-element DOF counts over all zone elements. */
+int S, F;
 cg_sol_write(fn, B, Z, "FlowSolution_DG",
     CGNS_ENUMV(InterpolationPoints), &S);
 
-/* Set polynomial order (CPEX 0045) */
+/* Set polynomial order (CPEX 0045):
+ * spatialOrder = 3, temporalOrder = 0 */
 cg_sol_interpolation_order_write(fn, B, Z, S, 3, 0);
 
-/* Mark as discontinuous */
-cg_sol_dof_storage_write(fn, B, Z, S,
-    CGNS_ENUMV(Independent));
+/* Mark DOFs as element-local */
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 
 /* Write element-local DOFs */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
     "Pressure", pressure_dg, &F);
 \end{lstlisting}
 
-\subsection{Example 3: Reading and Dispatching on DOF Storage Layout (C)}
+\subsection{Example 3: Reading and Dispatching on DOF Storage Layout}
 \label{ex:dispatch}
 
 \begin{lstlisting}[language=C]
-CGNS_ENUMT(DofStorage_t) repr;
-cg_sol_dof_storage_read(fn, B, Z, S, &repr);
+CGNS_ENUMT(DofStorage_t) layout;
 
-switch (repr) {
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+cg_dof_storage_read(&layout);
+
+switch (layout) {
 case CGNS_ENUMV(Shared):
     /* Shared DOFs: interpolate using global mesh connectivity */
-    visualize_continuous(fn, B, Z, S);
+    visualize_shared(fn, B, Z, S);
     break;
+
 case CGNS_ENUMV(Independent):
     /* Element-local DOFs: render per-element, preserve jumps */
-    visualize_discontinuous(fn, B, Z, S);
+    visualize_independent(fn, B, Z, S);
     break;
+
+case CGNS_ENUMV(DofStorageUserDefined): {
+    /* Writer must have left a DofStorageDescription
+     * descriptor identifying the convention. */
+    char dname[CGIO_MAX_NAME_LENGTH+1];
+    char *text = NULL;
+    int nd, n;
+    cg_ndescriptors(&nd);
+    for (n = 1; n <= nd; n++) {
+        cg_descriptor_read(n, dname, &text);
+        if (text == NULL) continue;
+        if (strcmp(dname, "DofStorageDescription") == 0)
+            visualize_user_defined(fn, B, Z, S, text);
+        cg_free(text);
+        text = NULL;
+    }
+    break;
+}
+
 default:
-    /* Null or UserDefined: fall back to legacy heuristics */
+    /* DofStorageNull: legacy file.  Apply the inference
+     * rules of Section 6.2 -- do not assume Shared. */
     visualize_legacy(fn, B, Z, S);
     break;
 }
 \end{lstlisting}
 
-\subsection{Example 4: HDG Solver with Both DOF Storage Types (C)}
+\subsection{Example 4: HDG Solver with Both DOF Storage Types}
 \label{ex:hdg}
 
+An HDG solver stores element-local volume DOFs and shared trace DOFs
+on the element skeleton.  The trace field is defined on \emph{face}
+elements, so the file must contain a face \texttt{Elements\_t} section
+and the trace solution must reference it through a point set.  Without
+that point set the array would be sized over the zone's volume
+elements, which is invalid
+(Section~\ref{sec:dofstorage-interp}).
+
 \begin{lstlisting}[language=C]
-/* Volume DOFs (discontinuous) */
-int S_vol;
+/* ---- Volume DOFs (independent) ---- */
+int S_vol, F;
 cg_sol_write(fn, B, Z, "VolumeSolution",
     CGNS_ENUMV(InterpolationPoints), &S_vol);
-cg_sol_dof_storage_write(fn, B, Z, S_vol,
-    CGNS_ENUMV(Independent));
+cg_sol_interpolation_order_write(fn, B, Z, S_vol, 3, 0);
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_vol, "end");
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 
-/* Trace DOFs on element faces (continuous on skeleton).
- * Case A: p=0 traces (one DOF per face) -- use FaceCenter. */
+/* ---- Face elements defining the skeleton ----
+ * Faces occupy element indices firstFace..lastFace. */
+int Sec;
+cg_section_write(fn, B, Z, "Faces", CGNS_ENUMV(TRI_3),
+    firstFace, lastFace, 0, face_conn, &Sec);
+
+cgsize_t faceRange[2];
+faceRange[0] = firstFace;
+faceRange[1] = lastFace;
+
+/* ---- Case A: p=0 traces, one DOF per face ----
+ * FaceCenter in a 3-D zone has no SIDS DataSize formula, so a
+ * point set over face element indices is REQUIRED; cg_sol_write
+ * alone would leave the field size undefined. */
 int S_trace;
-cg_sol_write(fn, B, Z, "TraceSolution",
-    CGNS_ENUMV(FaceCenter), &S_trace);
-cg_sol_dof_storage_write(fn, B, Z, S_trace,
-    CGNS_ENUMV(Shared));
+cg_sol_ptset_write(fn, B, Z, "TraceSolution",
+    CGNS_ENUMV(FaceCenter), CGNS_ENUMV(PointRange),
+    2, faceRange, &S_trace);
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_trace, "end");
+cg_dof_storage_write(CGNS_ENUMV(Shared));
+cg_field_write(fn, B, Z, S_trace, CGNS_ENUMV(RealDouble),
+    "TracePressure", trace_p, &F);
 
-/* Case B: higher-order traces -- use InterpolationPoints
- * with CPEX 0045 metadata for the face polynomial basis. */
+/* ---- Case B: higher-order traces ----
+ * InterpolationPoints with a point set listing the FACE element
+ * indices.  Each listed face contributes N_DOFs(face) values, and
+ * each face's block is shared by its two adjacent volume elements,
+ * so Shared is the correct label (Section 4.2). */
 int S_trace_ho;
-cg_sol_write(fn, B, Z, "TraceSolution_HO",
-    CGNS_ENUMV(InterpolationPoints), &S_trace_ho);
+cg_sol_ptset_write(fn, B, Z, "TraceSolution_HO",
+    CGNS_ENUMV(InterpolationPoints), CGNS_ENUMV(PointRange),
+    2, faceRange, &S_trace_ho);
 cg_sol_interpolation_order_write(fn, B, Z, S_trace_ho, 2, 0);
-cg_sol_dof_storage_write(fn, B, Z, S_trace_ho,
-    CGNS_ENUMV(Shared));
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_trace_ho, "end");
+cg_dof_storage_write(CGNS_ENUMV(Shared));
+cg_field_write(fn, B, Z, S_trace_ho, CGNS_ENUMV(RealDouble),
+    "TracePressure", trace_p_ho, &F);
 \end{lstlisting}
 
 \subsection{Example 5: Fortran Usage}
 \label{ex:fortran}
 
 \begin{lstlisting}[language=Fortran]
-integer :: S, ier, repr
+integer :: S, ier, layout
 
-! Write a continuous solution
+! Write a shared-DOF solution
 call cg_sol_write_f(fn, B, Z, 'FlowSolution', Vertex, S, ier)
-call cg_sol_dof_storage_write_f(fn, B, Z, S, &
-    Shared, ier)
+call cg_goto_f(fn, B, ier, 'Zone_t', Z, 'FlowSolution_t', S, 'end')
+call cg_dof_storage_write_f(Shared, ier)
 
-! Read continuity
-call cg_sol_dof_storage_read_f(fn, B, Z, S, repr, ier)
-if (repr == Independent) then
+! Read the DOF storage layout back
+call cg_goto_f(fn, B, ier, 'Zone_t', Z, 'FlowSolution_t', S, 'end')
+call cg_dof_storage_read_f(layout, ier)
+if (layout == Independent) then
     ! Element-local interpolation
 end if
 \end{lstlisting}
 
-\subsection{Example 6: Low-Order Finite Volume (DG $p=0$)}
+\subsection{Example 6: Low-Order Finite Volume
+  (\texorpdfstring{DG $p=0$}{DG p=0})}
 \label{ex:fv}
 
 \begin{lstlisting}[language=C]
@@ -1166,18 +1664,21 @@ int S;
 cg_sol_write(fn, B, Z, "FlowSolution",
     CGNS_ENUMV(CellCenter), &S);
 
-/* Explicitly mark as discontinuous */
-cg_sol_dof_storage_write(fn, B, Z, S,
-    CGNS_ENUMV(Independent));
+/* Explicitly record the independent layout */
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 \end{lstlisting}
 
-This example illustrates that continuity metadata provides value even
-for traditional low-order methods. Although a \texttt{CellCenter} solution
-is inherently element-local, explicitly recording the DOF storage layout assists
-post-processors and coupling frameworks in programmatically distinguishing
-between solution types.
+A \texttt{CellCenter} solution is already unambiguously independent, so
+a reader could derive this without the tag.  Recording it anyway is
+recommended but optional: it lets a coupling framework or
+post-processor dispatch on one uniform query across all solution nodes
+in a file, instead of maintaining a special case for each grid
+location.  The tag is genuinely load-bearing---rather than merely
+tidy---in the cases of Examples~\ref{ex:hdg},
+\ref{ex:shared-vertex-dg}, \ref{ex:fsi}, and~\ref{ex:cht}.
 
-\subsection{Example 7: DG Solution on a Shared-Vertex Mesh (C)}
+\subsection{Example 7: Independent DOFs on a Shared-Vertex Mesh}
 \label{ex:shared-vertex-dg}
 
 This example addresses the case where the mesh uses shared vertices
@@ -1186,116 +1687,134 @@ This example addresses the case where the mesh uses shared vertices
 independent solution values at those vertices.  The
 \texttt{DofStorage\_t} node is the flag that tells readers
 the repeated vertex indices in the \texttt{PointList} are independent
-DOFs, not duplicates.
+DOFs, not duplicates.  The zone must be unstructured, the
+\texttt{PointList} must cover every element, and the traversal order is
+fixed by Section~\ref{sec:ordering-rule}.
 
 \begin{lstlisting}[language=C]
 /*
- * Mesh: nVerts shared vertices, nElems elements,
- *       nVertsPerElem vertices per element.
- * Solution: element-local DOFs at each element's vertices.
- *           Total DOFs = nElems * nVertsPerElem.
+ * Given, for a single-section unstructured zone:
+ *   cgsize_t nVerts;         shared vertices in the zone
+ *   cgsize_t nElems;         elements in the zone
+ *   int      nVertsPerElem;  vertices per element (fixed type)
+ *   cgsize_t *elem_conn;     connectivity, nElems*nVertsPerElem,
+ *                            1-based, ascending element index
+ *   double   *pressure_dg;   nElems*nVertsPerElem values
+ *
+ * Total DOFs = nElems * nVertsPerElem  (not nVerts).
  */
+cgsize_t nDofs = nElems * (cgsize_t)nVertsPerElem;
+cgsize_t *point_list = (cgsize_t *)malloc(nDofs * sizeof(cgsize_t));
+if (point_list == NULL) return 1;
 
-/* Build the point list: for each element, list its vertex indices.
- * Shared vertices appear multiple times -- once per adjacent element. */
-cgsize_t point_list[nElems * nVertsPerElem];
-for (int e = 0; e < nElems; e++)
-    for (int v = 0; v < nVertsPerElem; v++)
-        point_list[e * nVertsPerElem + v] =
-            element_connectivity[e][v];  /* 1-based vertex index */
+/* The PointList is the connectivity traversed in ascending
+ * element index order, each element's vertices in canonical
+ * order.  For this single fixed-size section that is exactly
+ * the connectivity array; a multi-section, MIXED, or NGON_n
+ * zone requires the traversal of Section 3.8.3. */
+{
+    cgsize_t i;
+    for (i = 0; i < nDofs; i++)
+        point_list[i] = elem_conn[i];
+}
 
-/* Create solution node with PointList using the idiomatic
- * cg_sol_ptset_write: Vertex location preserves shared-mesh
- * connectivity for geometry operations.
- * DataSize = nElems * nVertsPerElem (not nVerts). */
-int S;
+/* Create the solution node with a PointList.  Vertex location
+ * preserves shared-mesh connectivity for geometry operations,
+ * while DataSize becomes nDofs rather than nVerts. */
+int S, F;
 cg_sol_ptset_write(fn, B, Z, "FlowSolution_DG",
-    CGNS_ENUMV(Vertex),
-    CGNS_ENUMV(PointList),
-    (cgsize_t)(nElems * nVertsPerElem),
-    point_list, &S);
+    CGNS_ENUMV(Vertex), CGNS_ENUMV(PointList),
+    nDofs, point_list, &S);
 
-/* Mark as discontinuous: values at repeated vertex indices
- * are independent across elements, ordered by Elements_t
- * section index then connectivity order. */
-cg_sol_dof_storage_write(fn, B, Z, S,
-    CGNS_ENUMV(Independent));
+/* Mark as independent: values at repeated vertex indices are
+ * independent across elements, ordered by ascending element
+ * index then canonical vertex order. */
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 
 /* Write element-local solution data */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
     "Pressure", pressure_dg, &F);
+
+free(point_list);
 \end{lstlisting}
 
-A reader distinguishes this from a continuous solution as follows:
+A reader distinguishes this from a shared-DOF solution as follows:
 
 \begin{lstlisting}[language=C]
-CGNS_ENUMT(DofStorage_t) cont;
-cg_sol_dof_storage_read(fn, B, Z, S, &cont);
+CGNS_ENUMT(DofStorage_t) layout;
 
-if (cont == CGNS_ENUMV(Independent)) {
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+cg_dof_storage_read(&layout);
+
+if (layout == CGNS_ENUMV(Independent)) {
     /* PointList entries are element-local DOF indices.
      * Values at the same vertex index from different elements
      * are independent -- do not average. */
 }
 \end{lstlisting}
 
-\subsection{Example 8: DiscreteData\_t with Discontinuous Error Indicator (C)}
+\subsection{Example 8: \texttt{DiscreteData\_t} with an Independent
+  Error Indicator}
 \label{ex:discrete}
 
 This example shows a DG error indicator stored in a
-\texttt{DiscreteData\_t} node.  The usage mirrors
-\texttt{FlowSolution\_t}; the only difference is the API prefix
-(\texttt{cg\_discrete\_} instead of \texttt{cg\_sol\_}).
+\texttt{DiscreteData\_t} node.  The usage is identical to
+\texttt{FlowSolution\_t}: only the \texttt{cg\_goto} path differs.
 
 \begin{lstlisting}[language=C]
 /* Create a cell-centered discrete data node for error indicators */
 int D;
 cg_discrete_write(fn, B, Z, "ErrorIndicator", &D);
+
 cg_goto(fn, B, "Zone_t", Z, "DiscreteData_t", D, "end");
 cg_gridlocation_write(CGNS_ENUMV(CellCenter));
 
-/* Mark as discontinuous (element-local error estimates) */
-cg_discrete_dof_storage_write(fn, B, Z, D,
-    CGNS_ENUMV(Independent));
+/* Mark as independent (element-local error estimates) */
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 
 /* Write per-element error data */
-cg_goto(fn, B, "Zone_t", Z, "DiscreteData_t", D, "end");
 cg_array_write("ElementError", CGNS_ENUMV(RealDouble),
     1, &nElems, error_data);
 \end{lstlisting}
 
-\subsection{Example 9: ZoneSubRegion\_t with Boundary Flux Data (C)}
+Note that a single \texttt{cg\_goto} serves all three calls: neither
+\texttt{cg\_gridlocation\_write}, \texttt{cg\_dof\_storage\_write},
+nor \texttt{cg\_array\_write} moves the current position.
+
+\subsection{Example 9: \texttt{ZoneSubRegion\_t} with Boundary Flux Data}
 \label{ex:subreg}
 
-This example stores discontinuous boundary flux data on a
+This example stores independent boundary flux data on a
 \texttt{ZoneSubRegion\_t} that references a boundary condition
 region.
 
 \begin{lstlisting}[language=C]
+/* The sub-region dimension is one less than the zone's cell
+ * dimension, so query the base rather than hard-coding it. */
+char basename[CGIO_MAX_NAME_LENGTH+1];
+int cellDim, physDim;
+cg_base_read(fn, B, basename, &cellDim, &physDim);
+
 /* Create a sub-region referencing a BC */
 int SR;
-/* CellDimension is the zone's cell dimension (e.g., 3 for a 3-D volume
- * zone), so CellDimension - 1 is the face dimension. */
 cg_subreg_bcname_write(fn, B, Z, "WallFluxes",
-    CellDimension - 1, "Wall_BC", &SR);
+    cellDim - 1, "Wall_BC", &SR);
 
-/* Mark as discontinuous (each face owns its own flux values) */
-cg_subreg_dof_storage_write(fn, B, Z, SR,
-    CGNS_ENUMV(Independent));
+/* Mark as independent (each face owns its own flux values) */
+cg_goto(fn, B, "Zone_t", Z, "ZoneSubRegion_t", SR, "end");
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 
 /* Write flux data on the sub-region */
-cg_goto(fn, B, "Zone_t", Z, "ZoneSubRegion_t", SR, "end");
 cg_array_write("HeatFlux", CGNS_ENUMV(RealDouble),
     1, &nBCFaces, heat_flux);
 \end{lstlisting}
 
-\subsection{Example 10: Solver Restart with DOF-Storage-Aware Read (C)}
+\subsection{Example 10: Solver Restart with DOF-Storage-Aware Read}
 \label{ex:restart}
 
 A solver reading a restart file must reconstruct the solution state
-correctly based on the DOF storage layout.  This example shows how a restart
-reader uses the \texttt{DofStorage\_t} metadata to dispatch between shared-DOF
-and element-local reconstruction.
+correctly based on the DOF storage layout.
 
 \begin{lstlisting}[language=C]
 /* Read solution metadata */
@@ -1303,8 +1822,9 @@ char sol_name[CGIO_MAX_NAME_LENGTH+1];
 CGNS_ENUMT(GridLocation_t) loc;
 cg_sol_info(fn, B, Z, S, sol_name, &loc);
 
-CGNS_ENUMT(DofStorage_t) cont;
-cg_sol_dof_storage_read(fn, B, Z, S, &cont);
+CGNS_ENUMT(DofStorage_t) layout;
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+cg_dof_storage_read(&layout);
 
 /* Read the field data.  In a generic restart loop, call
  * cg_field_info(fn,B,Z,S,F,...) first to discover field names
@@ -1313,106 +1833,118 @@ cg_field_read(fn, B, Z, S, "Pressure",
     CGNS_ENUMV(RealDouble), range_min, range_max,
     pressure_buf);
 
-/* Reconstruct based on continuity */
-if (cont == CGNS_ENUMV(Shared)) {
+/* Reconstruct based on the DOF storage layout */
+if (layout == CGNS_ENUMV(Shared)) {
     /* DOFs are shared at mesh vertices/edges/faces.
      * Map directly to the global DOF vector. */
-    reconstruct_continuous(pressure_buf, loc, mesh);
-} else if (cont == CGNS_ENUMV(Independent)) {
+    reconstruct_shared(pressure_buf, loc, mesh);
+
+} else if (layout == CGNS_ENUMV(Independent)) {
     /* DOFs are element-local.  Each element owns its
      * own copy of values at shared interfaces. */
-    reconstruct_discontinuous(pressure_buf, loc, mesh);
+    reconstruct_independent(pressure_buf, loc, mesh);
+
 } else {
-    /* Null: legacy file.  Infer from data size or
-     * assume continuous for backward compatibility. */
+    /* DofStorageNull: legacy file.  Apply the Section 6.2
+     * inference rules, which for CellCenter and
+     * InterpolationPoints give Independent, and for Vertex
+     * with DataSize == VertexSize give Shared. */
     reconstruct_legacy(pressure_buf, loc, mesh);
 }
 \end{lstlisting}
 
-\subsection{Example 11: FSI Coupling --- Structural and Fluid Solutions (C)}
+\subsection{Example 11: FSI Coupling --- Structural and Fluid Solutions}
 \label{ex:fsi}
 
 In Fluid-Structure Interaction (FSI) applications, a single zone may
 carry both fluid and structural solution fields with different
-continuity types.  A continuous FEM structural solver stores shared
+DOF storage layouts.  A continuous FEM structural solver stores shared
 displacement DOFs, while a DG fluid solver stores element-local flow
 variables.  Separate \texttt{FlowSolution\_t} nodes with distinct
-continuity metadata allow coupling frameworks to correctly interpret
-and transfer each field.
+\texttt{DofStorage\_t} values allow coupling frameworks to correctly
+interpret and transfer each field.
 
 \begin{lstlisting}[language=C]
-/* Structural solution: continuous FEM displacements */
+int F;
+
+/* Structural solution: shared FEM displacement DOFs */
 int S_struct;
 cg_sol_write(fn, B, Z, "StructuralDisplacement",
     CGNS_ENUMV(Vertex), &S_struct);
-cg_sol_dof_storage_write(fn, B, Z, S_struct,
-    CGNS_ENUMV(Shared));
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_struct, "end");
+cg_dof_storage_write(CGNS_ENUMV(Shared));
 cg_field_write(fn, B, Z, S_struct, CGNS_ENUMV(RealDouble),
     "DisplacementX", disp_x, &F);
 cg_field_write(fn, B, Z, S_struct, CGNS_ENUMV(RealDouble),
     "DisplacementY", disp_y, &F);
 
-/* Fluid solution: discontinuous DG flow field */
+/* Fluid solution: element-local DG flow field */
 int S_fluid;
 cg_sol_write(fn, B, Z, "FluidSolution",
     CGNS_ENUMV(InterpolationPoints), &S_fluid);
 cg_sol_interpolation_order_write(fn, B, Z, S_fluid, 3, 0);
-cg_sol_dof_storage_write(fn, B, Z, S_fluid,
-    CGNS_ENUMV(Independent));
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_fluid, "end");
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 cg_field_write(fn, B, Z, S_fluid, CGNS_ENUMV(RealDouble),
     "Pressure", pressure, &F);
 cg_field_write(fn, B, Z, S_fluid, CGNS_ENUMV(RealDouble),
     "VelocityX", vel_x, &F);
 
-/* A coupling framework reading this zone can query
- * each FlowSolution_t's continuity to determine the
- * correct interpolation and transfer strategy:
- *   - Continuous fields: global shared-DOF interpolation
- *   - Discontinuous fields: element-local projection */
+/* A coupling framework reading this zone can query each
+ * FlowSolution_t's DofStorage to determine the correct
+ * interpolation and transfer strategy:
+ *   - Shared:      global shared-DOF interpolation
+ *   - Independent: element-local projection */
 \end{lstlisting}
 
 The same pattern applies when the structural and fluid domains are in
-separate zones.  The continuity metadata on each zone's
+separate zones.  The DOF storage metadata on each zone's
 \texttt{FlowSolution\_t} nodes enables the coupling framework to
 apply the correct inter-code transfer operators without relying on
 naming conventions or external configuration.
 
-\subsection{Example 12: Conjugate Heat Transfer --- Perfect and Imperfect Thermal Contact (C)}
+\subsection{Example 12: Conjugate Heat Transfer --- Perfect and
+  Imperfect Thermal Contact}
 \label{ex:cht}
 
 Conjugate heat transfer (CHT) simulations couple a fluid temperature
 field (often stored at cell centers or DG DOFs) with a solid
-temperature field (often stored as a continuous CG FEM solution).
-The continuity metadata disambiguates the two layouts and informs the
+temperature field (often stored as a shared-DOF CG FEM solution).
+The DOF storage metadata disambiguates the two layouts and informs the
 coupling framework how to perform the interface transfer.
 
 \begin{lstlisting}[language=C]
-/* ---- Fluid zone: FV/DG temperature (discontinuous) ---- */
+char basename[CGIO_MAX_NAME_LENGTH+1];
+int cellDim, physDim, F;
+cg_base_read(fn, B, basename, &cellDim, &physDim);
+
+/* ---- Fluid zone: FV/DG temperature (independent) ---- */
 int S_fluid;
 cg_sol_write(fn, B, fluidZone, "ThermalSolution",
     CGNS_ENUMV(CellCenter), &S_fluid);
-cg_sol_dof_storage_write(fn, B, fluidZone, S_fluid,
-    CGNS_ENUMV(Independent));
+cg_goto(fn, B, "Zone_t", fluidZone,
+    "FlowSolution_t", S_fluid, "end");
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 cg_field_write(fn, B, fluidZone, S_fluid,
     CGNS_ENUMV(RealDouble), "Temperature", T_fluid, &F);
 
-/* ---- Solid zone: CG FEM temperature (continuous) ---- */
+/* ---- Solid zone: CG FEM temperature (shared) ---- */
 int S_solid;
 cg_sol_write(fn, B, solidZone, "ThermalSolution",
     CGNS_ENUMV(Vertex), &S_solid);
-cg_sol_dof_storage_write(fn, B, solidZone, S_solid,
-    CGNS_ENUMV(Shared));
+cg_goto(fn, B, "Zone_t", solidZone,
+    "FlowSolution_t", S_solid, "end");
+cg_dof_storage_write(CGNS_ENUMV(Shared));
 cg_field_write(fn, B, solidZone, S_solid,
     CGNS_ENUMV(RealDouble), "Temperature", T_solid, &F);
 
 /* ---- Interface heat flux on the solid side (face-local) ---- */
 int SR;
 cg_subreg_bcname_write(fn, B, solidZone, "FluidInterface",
-    CellDimension - 1, "FluidInterface_BC", &SR);
-cg_subreg_dof_storage_write(fn, B, solidZone, SR,
-    CGNS_ENUMV(Independent));
+    cellDim - 1, "FluidInterface_BC", &SR);
 cg_goto(fn, B, "Zone_t", solidZone,
     "ZoneSubRegion_t", SR, "end");
+cg_dof_storage_write(CGNS_ENUMV(Independent));
 cg_array_write("HeatFlux", CGNS_ENUMV(RealDouble),
     1, &nInterfaceFaces, heat_flux);
 \end{lstlisting}
@@ -1434,40 +1966,62 @@ coupling rather than a property of either field's storage layout.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{SIDS Impact}
+\label{sec:sids-impact}
 %% ═════════════════════════════════════════════════════════════════════════
 
 \begin{enumerate}[leftmargin=2em]
 \item \textbf{New enumeration type:} \texttt{DofStorage\_t}
-  is added to the SIDS building-block structure definitions
-  (Section~4 of the SIDS document), alongside existing enumeration
-  types such as \texttt{GridLocation\_t} (Section~4.5) and
-  \texttt{DataClass\_t} (Section~4.1).
+  is added to the SIDS Building-Block Structure Definitions
+  (SIDS Section~4).  That section is ordered alphabetically---4.1
+  \texttt{DataClass\_t}, 4.2 \texttt{Descriptor\_t}, 4.3
+  \texttt{DimensionalUnits\_t}, 4.4
+  \texttt{DimensionalExponents\_t}, 4.5 \texttt{GridLocation\_t}, 4.6
+  \texttt{IndexArray\_t}, 4.7 \texttt{IndexRange\_t}, 4.8
+  \texttt{Rind\_t}---so \texttt{DofStorage\_t} is inserted as the new
+  \textbf{Section~4.5}, and the current 4.5--4.8 are renumbered
+  4.6--4.9.  All cross-references to those four sections require
+  updating.
 
-\item \textbf{FlowSolution\_t amendment:} The
+\item \textbf{\texttt{FlowSolution\_t} amendment:} The
   \texttt{FlowSolution\_t} node definition (SIDS Section~7.7) is
   amended to include an optional
   \texttt{DofStorage\_t} child node.
 
-\item \textbf{DiscreteData\_t amendment:} The
+\item \textbf{\texttt{DiscreteData\_t} amendment:} The
   \texttt{DiscreteData\_t} node definition (SIDS Section~12.4) is
   similarly amended.
 
-\item \textbf{ZoneSubRegion\_t amendment:} The
+\item \textbf{\texttt{ZoneSubRegion\_t} amendment:} The
   \texttt{ZoneSubRegion\_t} node definition (SIDS Section~7.9) is
   similarly amended.
 
-\item \textbf{PointList semantics amendment:} The description of
-  \texttt{PointList} under \texttt{FlowSolution\_t} in SIDS~§7.7 is
+\item \textbf{\texttt{UserDefinedData\_t} amendment:} The
+  \texttt{UserDefinedData\_t} node definition (SIDS Section~12.10) is
+  similarly amended.
+
+\item \textbf{\texttt{PointList} semantics amendment:} The description of
+  \texttt{PointList} under \texttt{FlowSolution\_t} in SIDS~\S7.7 is
   amended to permit repeated vertex indices when
-  \texttt{DofStorage\_t = Independent}.  Repeated
-  indices in that context represent element-local DOFs and are not
-  malformed duplicates; the DOF-to-element mapping follows ascending
-  \texttt{Elements\_t} section index order, then connectivity order
-  within each section.  This amendment does not affect \texttt{PointList}
+  \texttt{DofStorage\_t = Independent} and
+  \texttt{GridLocation\_t = Vertex}, in unstructured zones only.
+  Repeated indices in that context represent element-local DOFs and are
+  not malformed duplicates.  The DOF-to-element mapping, the element
+  traversal order, the treatment of \texttt{MIXED} type codes, the
+  exclusion of \texttt{NFACE\_n}, the whole-zone coverage requirement,
+  and the prohibition on combining \texttt{Rind\_t} with this encoding
+  are specified in Sections~\ref{sec:ptlist-restrictions}
+  and~\ref{sec:ordering-rule} and shall be reproduced in the SIDS text.
+  This amendment does not affect \texttt{PointList}
   semantics under any other condition.
 
+\item \textbf{\texttt{InterpolationPoints} interaction:} If CPEX~0045 is
+  adopted, its \texttt{GridLocation\_t = InterpolationPoints}
+  description is amended with the \texttt{DofStorage\_t}
+  compatibility rules of Section~\ref{sec:dofstorage-interp}.
+
 \item No existing SIDS node types, enumerations, or conventions are
-  modified or removed.
+  modified or removed.  The only change to existing text is the
+  Section~4 renumbering in item~1, which is editorial.
 \end{enumerate}
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -1476,32 +2030,63 @@ coupling rather than a property of either field's storage layout.
 
 The \texttt{DofStorage} child node is stored identically
 to \texttt{GridLocation}: as a character node containing the string
-name of the enumeration value.  The file-mapping attributes are:
+name of the enumeration value.  The node attributes are given below in
+the format prescribed by the CGNS File Mapping Manual's
+\emph{Detailed CGNS Node Descriptions}~\cite{cgns-fmm}.
+\texttt{DofStorage\_t} belongs in the ``Location and Position Group''
+of basic nodes, immediately following \texttt{GridLocation\_t}.
 
 \begin{center}
-\begin{tabular}{@{} l l @{}}
+\begin{tabular}{@{} >{\bfseries}l p{0.60\linewidth} @{}}
+\multicolumn{2}{@{}l}{\textbf{Node Attributes:} \texttt{DofStorage\_t}} \\
 \toprule
-\textbf{Attribute} & \textbf{Value} \\
-\midrule
-Node name  & \texttt{DofStorage} \\
-Label      & \texttt{DofStorage\_t} \\
-Data type  & \texttt{C1} (character) \\
-Dimension  & 1 \\
-Dimension value & length of enumeration string \\
-Data       & enumeration name string \\
+Name: & \texttt{DofStorage} \\
+Label: & \texttt{DofStorage\_t} \\
+DataType: & \texttt{C1} \\
+Dimension: & 1 \\
+Dimension Values: & Length of the string value \\
+Data: & \texttt{Null}, \texttt{UserDefined}, \texttt{Shared},
+        or \texttt{Independent} \\
+Children: & None \\
+Cardinality: & 0,1 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\noindent This follows the same pattern as the \texttt{GridLocation}
-node under \texttt{FlowSolution\_t}: node name
-\texttt{"GridLocation"}, label \texttt{"GridLocation\_t"}, data type
-\texttt{"C1"}, with the enumeration string as data.
+\noindent This is attribute-for-attribute the same as the
+\texttt{GridLocation\_t} node description, apart from the name, label,
+and permitted data values.
 
-The node is written only when the continuity is not
-\texttt{DofStorageNull}.  When absent, readers default to
-\texttt{DofStorageNull}, paralleling how an absent
-\texttt{GridLocation} node defaults to \texttt{Vertex}.
+\subsection{Affected File Mapping Figures}
+
+The following File Mapping figures gain a \texttt{DofStorage} child
+box, drawn in the same style as the existing \texttt{GridLocation}
+child:
+
+\begin{itemize}[leftmargin=2em]
+\item \texttt{FlowSolution\_t}
+\item \texttt{DiscreteData\_t}
+\item \texttt{ZoneSubRegion\_t}
+\item \texttt{UserDefinedData\_t}
+\end{itemize}
+
+\subsection{Writing Conventions}
+
+The node is written only when the DOF storage layout is not
+\texttt{DofStorageNull}; \texttt{DofStorageNull} is represented by the
+absence of the node.  This mirrors \texttt{GridLocation}, which is
+likewise omitted when it would carry its default.  The two differ in
+what the absence \emph{means}: an absent \texttt{GridLocation} implies
+the concrete value \texttt{Vertex}, whereas an absent
+\texttt{DofStorage} implies only ``unspecified''
+(Section~\ref{sec:legacy-inference}).
+
+When \texttt{DofStorageUserDefined} is written, the accompanying
+description node is an ordinary \texttt{Descriptor\_t} and follows
+the existing \texttt{Descriptor\_t} file mapping unchanged, with
+name \texttt{DofStorageDescription}, label
+\texttt{Descriptor\_t}, data type \texttt{C1}, dimension~1, and
+cardinality 0,1 within the parent node.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Design Decisions}
@@ -1513,7 +2098,7 @@ existing CGNS conventions and SIDS precedent.
 
 \begin{enumerate}[leftmargin=2em]
 
-\item \textbf{Scope: \texttt{BCData\_t} is excluded.}
+\item \label{dd:bcdata} \textbf{Scope: \texttt{BCData\_t} is excluded.}
   \texttt{DofStorage\_t} is \emph{not} added to
   \texttt{BCData\_t}.  Boundary condition data arrays in
   \texttt{BCData\_t} are sized by the associated
@@ -1521,21 +2106,23 @@ existing CGNS conventions and SIDS precedent.
   which already determine the data layout unambiguously.  In DG
   methods, boundary conditions are typically applied weakly through
   numerical fluxes; the element-local nature of the boundary data
-  follows from the solution continuity on the parent
+  follows from the DOF storage layout on the parent
   \texttt{FlowSolution\_t} node.  Adding
   \texttt{DofStorage\_t} to \texttt{BCData\_t} would be
   redundant and would introduce a potential inconsistency if the BC
-  continuity differs from the solution it constrains.  Should a
-  future use case require per-BC continuity metadata (e.g.,
+  layout differed from the solution it constrains.  Should a
+  future use case require per-BC DOF storage metadata (e.g.,
   coupling frameworks imposing boundary data in a different
-  continuity than the interior, or interface conditions in CHT
+  layout than the interior, or interface conditions in CHT
   simulations with imperfect thermal contact where a flux-jump
   boundary condition is prescribed), it can be proposed as a
-  separate, narrowly scoped CPEX without affecting this proposal.
+  separate, narrowly scoped CPEX---coordinated with CPEX~0047's
+  \texttt{BC\_t}/\texttt{BCDataSet\_t} extensions---without affecting
+  this proposal.
   The \texttt{ZoneSubRegion\_t} extension introduced here
   partially addresses such cases: interface fluxes or
-  surface-local fields that require a continuity label can
-  be stored in a \texttt{ZoneSubRegion\_t} referencing the
+  surface-local fields that require a DOF storage label
+  can be stored in a \texttt{ZoneSubRegion\_t} referencing the
   relevant boundary condition (see Example~\ref{ex:cht}).
 
 \item \textbf{Per-solution-node granularity (not per-field).}
@@ -1547,13 +2134,13 @@ existing CGNS conventions and SIDS precedent.
   the same grid location.  Per-\texttt{DataArray\_t} granularity was
   rejected because it would add significant API and metadata
   complexity with no demonstrated need.  Solvers that genuinely mix
-  continuity types within a single zone (e.g., HDG methods with
-  continuous traces and discontinuous volumes) should use separate
+  layouts within a single zone (e.g., HDG methods with
+  shared traces and independent volumes) should use separate
   \texttt{FlowSolution\_t} nodes, exactly as they would use separate
   nodes for fields at different \texttt{GridLocation\_t} values.
 
-\item \textbf{\texttt{CellCenter} + \texttt{Shared}: permitted
-  but semantically inconsistent.}
+\item \label{dd:permissive} \textbf{Semantically inconsistent
+  combinations are permitted but not enforced.}
   The MLL does \emph{not} enforce consistency between
   \texttt{DofStorage\_t} and \texttt{GridLocation\_t}.
   A \texttt{CellCenter} solution is inherently element-local, making
@@ -1561,35 +2148,250 @@ existing CGNS conventions and SIDS precedent.
   shall not reject such combinations.  This follows the established
   CGNS convention of being permissive in what is accepted: the
   standard documents correct usage; validation is delegated to
-  application-level tools such as \texttt{cgnscheck}.
+  application-level tools such as \texttt{cgnscheck}
+  (Section~\ref{sec:cgnscheck}).
 
-  \textbf{Convention:} \texttt{DofStorage\_t = Shared}
-  with \texttt{GridLocation\_t = CellCenter} should not be used.
-  \texttt{cgnscheck} should issue a warning when this combination is
-  encountered.
+\item \textbf{Position-based API rather than per-parent functions.}
+  See Section~\ref{sec:mll} for the full rationale.  The decisive
+  consideration is that the address-helper pattern used by every other
+  optional scalar metadata child already solves parent dispatch,
+  modify-mode overwrite, and absent-node reads, so reimplementing
+  those three behaviors six times would add code without adding
+  capability.
 
-\item \textbf{Recommended \texttt{cgnscheck} validation rules.}
-  The following consistency checks are recommended for
-  \texttt{cgnscheck} and similar validation tools:
+\item \textbf{A new node type rather than a new
+  \texttt{GridLocation\_t} value.}  See
+  Section~\ref{sec:why-new-node}.
 
-  \begin{description}[leftmargin=2em]
-  \item[Warning:] \texttt{DofStorage\_t = Shared} with
-    \texttt{GridLocation\_t = CellCenter} --- semantically inconsistent
-    since cell-centered data is inherently element-local
-    (Design Decision~3 above).
+\end{enumerate}
 
-  \item[Error:] \texttt{DofStorage\_t = Independent} with
-    \texttt{GridLocation\_t = Vertex} and \emph{no}
-    \texttt{PointList} --- the SIDS \texttt{DataSize} formula yields
-    $\texttt{VertexSize}$ (the shared-vertex count), which cannot
-    represent the larger element-local DOF count
-    (Section~\ref{sec:shared-vertex-layout}).
+\subsection{Rejected Alternatives}
 
-  \item[Warning:] \texttt{DofStorage\_t} value outside the
-    range $[0, \texttt{NofValidDofStorage})$ --- invalid
-    enumeration value.
-  \end{description}
+\begin{description}[leftmargin=2em]
+\item[A boolean \texttt{Discontinuous} flag.]  Rejected.  A boolean
+  cannot express ``unspecified,'' which is exactly the state every
+  pre-existing file is in, so a boolean would force writers to assert
+  a layout they may not know.  It also leaves no room for a
+  \texttt{UserDefined} escape hatch, and CGNS has no precedent for
+  boolean-valued metadata nodes.
 
+\item[A third \texttt{MixedStorage} value.]  Rejected; see the
+  Rationale for Two-Value Classification.  Mixed-layout methods store
+  distinguishable data and should store it in distinguishable nodes.
+
+\item[Encoding the layout in \texttt{UserDefinedData\_t}.]  Rejected as
+  the primary mechanism.  It requires every reader to agree on a name
+  and string convention by side-channel, which is precisely the
+  interoperability failure this CPEX exists to fix.  A standard
+  enumeration with a standard label is machine-checkable;
+  \texttt{UserDefinedData\_t} is not.  Note that this CPEX
+  nevertheless \emph{permits} \texttt{DofStorage\_t} as a child of
+  \texttt{UserDefinedData\_t}, so applications storing fields there
+  can label them properly.
+
+\item[Deriving the layout from array sizes.]  Rejected; see
+  Section~2.2.  The inference is ambiguous at $p=0$, breaks on
+  mixed-element meshes, and breaks whenever a point set is used.  It
+  is retained only as a best-effort fallback for legacy files
+  (Section~\ref{sec:legacy-inference}).
+
+\item[Placing the node on \texttt{Zone\_t} or \texttt{Base\_t}.]
+  Rejected.  A single zone routinely carries solutions with different
+  layouts (Examples~\ref{ex:hdg}, \ref{ex:fsi}), so a zone-level
+  setting could not express them.
+\end{description}
+
+%% ═════════════════════════════════════════════════════════════════════════
+\section{Recommended \texttt{cgnscheck} Validation Rules}
+\label{sec:cgnscheck}
+%% ═════════════════════════════════════════════════════════════════════════
+
+Per Design Decision~\ref{dd:permissive}, the MLL is permissive and
+validation belongs in \texttt{cgnscheck}.  The following rules are
+recommended.  Note that the on-disk representation is a \texttt{C1}
+string, so there is no such thing as an out-of-range integer value in
+a file; the corresponding check is on the string.
+
+\begin{description}[leftmargin=2em]
+
+\item[Error:] \texttt{DofStorage} node data is not one of
+  \texttt{"Null"}, \texttt{"UserDefined"}, \texttt{"Shared"}, or
+  \texttt{"Independent"}.  Note that the MLL itself reports this as an
+  error via \texttt{cgi\_DofStorage} for files at or below the
+  library's own version, and as a warning (degrading to
+  \texttt{UserDefined}) for files written by a newer library.
+
+\item[Error:] \texttt{DofStorage\_t = Independent} with
+  \texttt{GridLocation\_t = Vertex} and \emph{no}
+  \texttt{PointList} --- the SIDS \texttt{DataSize} formula yields
+  \texttt{VertexSize} (the shared-vertex count), which cannot
+  represent the larger element-local DOF count
+  (Section~\ref{sec:shared-vertex-layout}).
+
+\item[Error:] \texttt{DofStorage\_t = Independent} with
+  \texttt{GridLocation\_t = Vertex} and a \texttt{PointList}, in a
+  \emph{structured} zone --- the ordering rule is defined only for
+  unstructured zones (Section~\ref{sec:ptlist-restrictions}).
+
+\item[Error:] \texttt{DofStorage\_t = Independent} with
+  \texttt{GridLocation\_t = Vertex} and a \texttt{PointList} whose
+  contents do not equal the zone's element connectivity traversed per
+  Section~\ref{sec:ordering-rule}.  Because the required contents are
+  fully determined, this is an exact check, not a heuristic.  It
+  subsumes checks for wrong length, wrong ordering, and incomplete
+  element coverage.
+
+\item[Error:] \texttt{DofStorage\_t = Independent} with
+  \texttt{GridLocation\_t = Vertex} and a \texttt{PointList} in a zone
+  containing an \texttt{NFACE\_n} section
+  (Section~\ref{sec:ptlist-restrictions}).
+
+\item[Error:] \texttt{Rind\_t} present alongside
+  \texttt{DofStorage\_t = Independent},
+  \texttt{GridLocation\_t = Vertex}, and a \texttt{PointList}
+  (Section~\ref{sec:ptlist-restrictions}).
+
+\item[Error:] \texttt{DofStorage\_t = Shared} with
+  \texttt{GridLocation\_t = InterpolationPoints} and no point set, or
+  with a point set that lists volume rather than interface element
+  indices (Section~\ref{sec:dofstorage-interp}).
+
+\item[Error:] \texttt{DofStorage\_t = Shared} with
+  \texttt{GridLocation\_t = IntegrationPoint} --- integration-point
+  data is necessarily element-local.
+
+\item[Warning:] \texttt{DofStorage\_t = Shared} with
+  \texttt{GridLocation\_t = CellCenter} (or \texttt{FaceCenter},
+  \texttt{EdgeCenter}, \texttt{[IJK]FaceCenter}) --- semantically
+  inconsistent, since such data is inherently one value per entity
+  with no shared-entity ambiguity (Design
+  Decision~\ref{dd:permissive}).  \textbf{Convention:} this
+  combination should not be used.
+
+\item[Warning:] \texttt{DofStorage\_t = Shared} on a
+  \texttt{FlowSolution\_t} whose CPEX-0045 \texttt{InterpolationOrders}
+  gives \texttt{spatialOrder = 0} --- a $p=0$ basis has no interface
+  DOFs to share.
+
+\item[Warning:] A value of \texttt{DofStorageUserDefined} without
+  a sibling \texttt{Descriptor\_t} named
+  \texttt{DofStorageDescription} --- the convention is then
+  unrecoverable by any reader.
+
+\item[Warning:] A \texttt{DofStorage} node whose data is
+  \texttt{"Null"}.  This is legal but pointless: the absence of the
+  node carries the same meaning, and writing \texttt{Null} through the
+  MLL removes the node rather than creating one, so such a node
+  indicates a file written outside the MLL.
+
+\end{description}
+
+%% ═════════════════════════════════════════════════════════════════════════
+\section{Reference Implementation, Versioning, and Test Plan}
+\label{sec:refimpl}
+%% ═════════════════════════════════════════════════════════════════════════
+
+\subsection{Deliverables}
+
+The reference implementation comprises:
+
+\begin{enumerate}[leftmargin=2em]
+\item \texttt{cgnslib.h}: the \texttt{DofStorage\_t} enumeration,
+  \texttt{NofValidDofStorage}, the \texttt{DofStorageName} extern
+  declaration, and prototypes for
+  \texttt{cg\_dof\_storage\_read},
+  \texttt{cg\_dof\_storage\_write}, and
+  \texttt{cg\_DofStorageName}.
+\item \texttt{cgnslib.c}: the \texttt{DofStorageName} table and the
+  three public functions.
+\item \texttt{cgns\_header.h}: the \texttt{dof\_storage} field in
+  \texttt{cgns\_sol}, \texttt{cgns\_discrete}, \texttt{cgns\_subreg},
+  and \texttt{cgns\_user\_data}; prototypes for
+  \texttt{cgi\_dof\_storage\_address} and \texttt{cgi\_DofStorage}.
+\item \texttt{cgns\_internals.c}: the address helper, the string
+  mapper, and the four parser updates.
+\item \texttt{cgns\_f.F90} / \texttt{cgns\_f.h}: the Fortran bindings
+  and the \texttt{DofStorage\_t} parameter values.
+\item \texttt{cgnscheck.c}: the validation rules of
+  Section~\ref{sec:cgnscheck}.
+\item \texttt{cgnsview}: display of the new node (no code change
+  expected; the generic C1 node display suffices).
+\item Documentation updates to the SIDS, File Mapping Manual, and MLL
+  reference per Sections~8 and~9.
+\end{enumerate}
+
+\subsection{Versioning}
+
+The library version constant is incremented, and the value at which
+\texttt{DofStorage\_t} first appears shall be recorded in the SIDS text
+so that implementers can determine support from the file version
+alone.  The forward-compatibility path described in
+Section~\ref{sec:compat} depends on this: \texttt{cgi\_DofStorage}
+degrades unrecognized strings to \texttt{UserDefined} only when
+\texttt{cg->version > CGNSLibVersion}.
+
+\subsection{Test Plan}
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Round trip, all parents.}  For each of
+  \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t},
+  \texttt{ZoneSubRegion\_t}, and \texttt{UserDefinedData\_t}: write
+  each of \texttt{Shared}, \texttt{Independent}, and
+  \texttt{DofStorageUserDefined}; close; reopen; read back and compare.
+
+\item \textbf{Absent node.}  Read from a node with no
+  \texttt{DofStorage} child and assert \texttt{CG\_OK} with
+  \texttt{DofStorageNull}.  Repeat against a file written by a
+  pre-CPEX-0050 library.
+
+\item \textbf{Overwrite in \texttt{CG\_MODE\_MODIFY}.}  Write
+  \texttt{Shared}, close, reopen in modify mode, write
+  \texttt{Independent}, close, reopen: assert the value is
+  \texttt{Independent} \emph{and} that the parent has exactly one
+  child with label \texttt{DofStorage\_t}.  This is the regression
+  test for duplicate-child creation.
+
+\item \textbf{Deletion.}  Write \texttt{Shared}, then write
+  \texttt{DofStorageNull} in modify mode; assert the child node is
+  gone and a subsequent read yields \texttt{DofStorageNull}.
+
+\item \textbf{Invalid input.}  Assert \texttt{CG\_ERROR} from
+  \texttt{cg\_dof\_storage\_write} for out-of-range enum values.
+
+\item \textbf{Wrong parent.}  Assert \texttt{CG\_INCORRECT\_PATH} when
+  the current position is, e.g., \texttt{GridCoordinates\_t}.
+
+\item \textbf{No current position.}  Assert \texttt{CG\_ERROR} when
+  called without a preceding \texttt{cg\_goto}.
+
+\item \textbf{Forward compatibility.}  Hand-construct a file
+  (via CGIO) with \texttt{DofStorage} data \texttt{"Trace"} and a
+  version greater than the library's; assert the read yields
+  \texttt{DofStorageUserDefined} with a warning, not an error.  With a
+  version at or below the library's, assert \texttt{CG\_ERROR}.
+
+\item \textbf{Shared-vertex independent layout.}  Build the
+  Example~\ref{ex:shared-vertex-dg} file; assert
+  \texttt{cg\_sol\_ptset\_info} reports
+  $\texttt{npnts} = n_{\mathrm{elem}} \times n_{\mathrm{vpe}}$, that
+  \texttt{cg\_field\_read} returns all values, and that
+  \texttt{cgnscheck} passes.  Then perturb the \texttt{PointList}
+  ordering and assert \texttt{cgnscheck} reports an error.
+
+\item \textbf{\texttt{cgnscheck} rules.}  One file per rule in
+  Section~\ref{sec:cgnscheck}, asserting the expected error or
+  warning.
+
+\item \textbf{Fortran.}  Mirror tests 1--4 through the Fortran
+  bindings.
+
+\item \textbf{Parallel.}  Under \texttt{cgp\_open}, call
+  \texttt{cg\_dof\_storage\_write} collectively from all ranks and
+  assert the file is valid and single-valued; confirm on 1, 2, and 4
+  ranks.
+
+\item \textbf{Backward compatibility of existing tests.}  The full
+  existing CGNS test suite shall pass unchanged.
 \end{enumerate}
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -1597,30 +2399,32 @@ existing CGNS conventions and SIDS precedent.
 %% ═════════════════════════════════════════════════════════════════════════
 
 \begin{center}
-\begin{longtable}{l p{8.5cm}}
+\begin{longtable}{l p{0.52\linewidth}}
 \toprule
 \textbf{Symbol} & \textbf{Description} \\
 \midrule
 \endhead
-\texttt{DofStorage\_t} & New enumeration type: \texttt{Null}, \texttt{UserDefined}, \texttt{Shared}, \texttt{Independent}. \\
+\multicolumn{2}{@{}l}{\textit{Public (\texttt{cgnslib.h})}} \\
+\texttt{DofStorage\_t} & New enumeration type: \texttt{DofStorageNull}, \texttt{DofStorageUserDefined}, \texttt{Shared}, \texttt{Independent} (see Section~\ref{sec:value-naming} on the unprefixed value names). \\
 \texttt{DofStorageName} & String table for the enumeration values. \\
 \texttt{NofValidDofStorage} & Count of valid enumeration values (4). \\
 \texttt{cg\_DofStorageName} & C: return the string name for a \texttt{DofStorage\_t} value (mirrors \texttt{cg\_GridLocationName}). \\
-\texttt{cg\_sol\_continuity\_write} & C: write solution continuity for a \texttt{FlowSolution\_t} node. \\
-\texttt{cg\_sol\_continuity\_read} & C: read solution continuity for a \texttt{FlowSolution\_t} node. \\
-\texttt{cg\_discrete\_continuity\_write} & C: write solution continuity for a \texttt{DiscreteData\_t} node. \\
-\texttt{cg\_discrete\_continuity\_read} & C: read solution continuity for a \texttt{DiscreteData\_t} node. \\
-\texttt{cg\_subreg\_continuity\_write} & C: write solution continuity for a \texttt{ZoneSubRegion\_t} node. \\
-\texttt{cg\_subreg\_continuity\_read} & C: read solution continuity for a \texttt{ZoneSubRegion\_t} node. \\
-\texttt{cg\_sol\_continuity\_write\_f} & Fortran: write solution continuity (\texttt{FlowSolution\_t}). \\
-\texttt{cg\_sol\_continuity\_read\_f} & Fortran: read solution continuity (\texttt{FlowSolution\_t}). \\
-\texttt{cg\_discrete\_continuity\_write\_f} & Fortran: write solution continuity (\texttt{DiscreteData\_t}). \\
-\texttt{cg\_discrete\_continuity\_read\_f} & Fortran: read solution continuity (\texttt{DiscreteData\_t}). \\
-\texttt{cg\_subreg\_continuity\_write\_f} & Fortran: write solution continuity (\texttt{ZoneSubRegion\_t}). \\
-\texttt{cg\_subreg\_continuity\_read\_f} & Fortran: read solution continuity (\texttt{ZoneSubRegion\_t}). \\
+\texttt{cg\_dof\_storage\_write} & C: write the DOF storage layout of the node at the current position. \\
+\texttt{cg\_dof\_storage\_read} & C: read the DOF storage layout of the node at the current position. \\
+\texttt{cg\_dof\_storage\_write\_f} & Fortran binding for \texttt{cg\_dof\_storage\_write}. \\
+\texttt{cg\_dof\_storage\_read\_f} & Fortran binding for \texttt{cg\_dof\_storage\_read}. \\
+\addlinespace
+\multicolumn{2}{@{}l}{\textit{Internal (\texttt{cgns\_header.h})}} \\
+\texttt{cgi\_dof\_storage\_address} & Resolve the current position to the parent's \texttt{dof\_storage} field; delete an existing child on modify. \\
+\texttt{cgi\_DofStorage} & Map a \texttt{DofStorage} string to the enumeration value. \\
+\texttt{dof\_storage} & New field in \texttt{cgns\_sol}, \texttt{cgns\_discrete}, \texttt{cgns\_subreg}, \texttt{cgns\_user\_data}. \\
 \bottomrule
 \end{longtable}
 \end{center}
+
+\noindent Four public functions cover all four parent node types.  No
+per-parent variants and no \texttt{cgp\_*} variants are required; see
+Sections~\ref{sec:mll} and~\ref{sec:compat}.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{References}
@@ -1632,6 +2436,10 @@ existing CGNS conventions and SIDS precedent.
 CGNS Standard Interface Data Structures (SIDS),\\
 \url{https://cgns.org/standard/SIDS/CGNS_SIDS.html}
 
+\bibitem{cgns-fmm}
+CGNS File Mapping Manual---Detailed CGNS Node Descriptions,\\
+\url{https://cgns.org/standard/FMM/nodes.html}
+
 \bibitem{cgns-mll}
 CGNS Mid-Level Library---Flow Solution,\\
 \url{https://cgns.org/standard/MLL/api/c_api.html}
@@ -1639,6 +2447,11 @@ CGNS Mid-Level Library---Flow Solution,\\
 \bibitem{cpex0045}
 CPEX 0045, ``Polynomial Data and Curved Grid Elements,''\\
 \url{https://github.com/CGNS/CGNS/issues/577}
+
+\bibitem{cpex0047}
+CPEX 0047, ``Quadrature Rules Definition and Data Storage''
+(Integration Point Definition), M.~Philit and F.~Huvelin,\\
+\url{https://cgns.org/current/CPEX.html}
 
 \bibitem{hesthaven2008}
 Hesthaven, J.S.\ and Warburton, T., \emph{Nodal Discontinuous
