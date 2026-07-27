@@ -1,0 +1,19 @@
+.gitignore
+  s_5428cac5e39054::t_f39fd4b590469d 4-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b41fe24da405b207a838cb8f0df673898cffb7b6",
+  "prompts": {},
+  "sessions": {
+    "s_5428cac5e39054": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed8dc27e-a7b2-49df-9d8e-680c0cbaccb2",
+        "model": "claude-opus-5"
+      },
+      "human_author": "M. Scot Breitenfeld <brtnfld@hdfgroup.org>"
+    }
+  }
+}
