@@ -218,14 +218,12 @@ This distinction affects:
   discontinuities at element interfaces that should not be smoothed.
 
 \item \textbf{Restart and data exchange.}  Solvers reading restart
-  files must know whether DOFs are shared or element-local to
-  correctly reconstruct the solution state.  Coupling frameworks
-  exchanging solution data between codes need this metadata to perform
-  correct inter-code transfers.  In Fluid-Structure Interaction (FSI)
-  applications, for example, a continuous FEM structural displacement
-  field and a discontinuous DG fluid field coexist---the coupling
-  framework must use different interpolation and projection operators
-  for each, and the DOF storage metadata enables this dispatch.
+  files, and coupling frameworks exchanging data between codes, must
+  know whether DOFs are shared or element-local to reconstruct the
+  solution state and select the correct transfer operators.  Where the
+  grid location already settles that question this is a matter of
+  convenience rather than necessity; where it does not, it is the
+  difference between a usable file and an unreadable one.
 
 \item \textbf{Error estimation and adaptation.}  The jump in solution
   values across element interfaces in a DG solution is physically
@@ -703,7 +701,7 @@ compatibility.
 
 The same optional child node is added to \texttt{DiscreteData\_t}
 (SIDS Section~12.4), using identical structure and semantics
-(Example~\ref{ex:discrete}):
+(Example~\ref{ex:other-parents}):
 
 \begin{sidsnode}{DiscreteData\_t (amended, SIDS Section 12.4)}
 DiscreteData\_t< int CellDimension, int IndexDimension, \\
@@ -720,7 +718,7 @@ The optional child node is also added to \texttt{ZoneSubRegion\_t}
 (SIDS Section~7.9).  \texttt{ZoneSubRegion\_t} holds
 \texttt{DataArray\_t} nodes for localized solutions, boundary fluxes,
 or fields on sub-regions where the shared/independent distinction
-applies equally (Example~\ref{ex:subreg}):
+applies equally (Example~\ref{ex:other-parents}):
 
 \begin{sidsnode}{ZoneSubRegion\_t (amended, SIDS Section 7.9)}
 ZoneSubRegion\_t< int RegionCellDimension > := \\
@@ -1464,11 +1462,11 @@ InterpolationPoints}:
   \texttt{FlowSolution\_t} node.
 \end{enumerate}
 
-Examples~\ref{ex:dg-write} and~\ref{ex:hdg} show both steps.
+Example~\ref{ex:dg-write} shows both steps.
 
 For lower-order solutions using \texttt{GridLocation\_t = Vertex} or
 \texttt{CellCenter}, this CPEX can be used independently of CPEX~0045;
-see Examples~\ref{ex:cg-write} and~\ref{ex:fv}.
+see Example~\ref{ex:cg-write}.
 See Section~\ref{sec:shared-vertex-layout} for the prescribed data
 layout when independent DOFs coincide with shared mesh vertices.
 
@@ -1498,7 +1496,7 @@ per-element DOF blocks, the following rules apply:
   face or edge \texttt{Elements\_t} section(s).  The shared reading is
   then: each listed interface element's DOF block is shared between the
   volume elements adjacent to it.  This is the HDG trace case
-  (Example~\ref{ex:hdg}).
+  the trace case.
 
 \item \texttt{DofStorage\_t = Shared} on a block whose element set is
   the zone's volume elements---in particular, any
@@ -1521,36 +1519,23 @@ solution array.  It permits that grid location under
 \texttt{FlowSolution\_t}, \texttt{ZoneSubRegion\_t}, \texttt{BC\_t},
 and \texttt{BCDataSet\_t}.
 
-The two proposals are complementary and do not conflict:
-
-\begin{itemize}[leftmargin=2em]
-\item \textbf{CPEX~0047 supplies an explicit dof-map for one grid
-  location.}  \texttt{ItgPointsStartOffset} is precisely the
-  per-element offset array whose absence motivates
-  Section~\ref{sec:shared-vertex-layout}.  Where it applies, it is a
-  better mechanism than the redundant \texttt{PointList} encoding, and
-  this CPEX recommends it over that encoding.
-
-\item \textbf{\texttt{IntegrationPoint} data is inherently
-  independent.}  Integration points are interior to elements and the
-  offset array assigns a disjoint slice of the array to each element,
-  so \texttt{DofStorage\_t = Independent} is the only valid value under
-  \texttt{GridLocation\_t = IntegrationPoint}.  Recording it remains
-  useful for uniform reader dispatch, but adds no information a reader
-  could not derive; \texttt{Shared} under this location should be
-  reported as an error by \texttt{cgnscheck}.
-
-\item \textbf{CPEX~0047 does not subsume this proposal.}  It says
-  nothing about vertex-, edge-, or face-located DOFs, which is the only
-  place a storage discriminator is load-bearing, and it does not
-  cover \texttt{DiscreteData\_t}.
-
-\item \textbf{Boundary data.}  CPEX~0047 extends \texttt{BC\_t} and
-  \texttt{BCDataSet\_t}; this CPEX deliberately does not
-  (Design Decision~\ref{dd:bcdata}), and its \texttt{IntegrationPoint}
-  location already covers element-local boundary data, including the
-  weakly-imposed boundary conditions of continuous methods.
-\end{itemize}
+The two proposals are complementary.  \texttt{ItgPointsStartOffset} is
+precisely the per-element offset array whose absence motivates
+Section~\ref{sec:shared-vertex-layout}, and where it applies it is the
+better mechanism---this CPEX recommends it over the redundant
+\texttt{PointList} encoding.  Because integration points are interior to
+elements and the offset array assigns each element a disjoint slice,
+\texttt{Independent} is the only valid value under that grid location;
+recording it aids uniform reader dispatch but adds nothing derivable,
+and \texttt{Shared} there should be a \texttt{cgnscheck} error.  Neither
+proposal subsumes the other: 0047 says nothing about vertex-, edge-, or
+face-located DOFs, which is the only place a storage discriminator is
+load-bearing, and does not cover \texttt{DiscreteData\_t}.  Conversely,
+0047 extends \texttt{BC\_t} and \texttt{BCDataSet\_t} where this CPEX
+deliberately does not (Design Decision~\ref{dd:bcdata}), and its
+\texttt{IntegrationPoint} location already covers element-local boundary
+data, including the weakly-imposed boundary conditions of continuous
+methods.
 
 One editorial concern spans the two proposals: CPEX~0045's
 \texttt{InterpolationPoints} and CPEX~0047's \texttt{IntegrationPoint}
@@ -1656,8 +1641,8 @@ must nevertheless act on files predating this CPEX:
 Note that these rules make no ``assume shared for backward
 compatibility'' blanket assumption: since most CFD files are
 cell-centered finite volume, such an assumption would be wrong for the
-majority of existing data.  Example~\ref{ex:restart} shows a restart
-reader applying this dispatch.
+majority of existing data.  Example~\ref{ex:dispatch} shows a reader
+applying this dispatch.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Examples}
@@ -1667,18 +1652,14 @@ All examples use the position-based API: \texttt{cg\_goto} to the
 target node, then \texttt{cg\_dof\_storage\_write}.  Error checking is
 omitted for brevity; production code must check every return value.
 
-The examples serve two different purposes, and it is worth separating
-them.  Example~\ref{ex:shared-vertex-dg} is the motivating
-case of Section~\ref{sec:field-evidence}: the encoding it shows has no
-alternative today, and it is the reason for this proposal.
-Example~\ref{ex:cg-write} is its counterpart, and
-Example~\ref{ex:dispatch} shows the reader-side dispatch that makes the
-pair useful.  The remainder are \emph{illustrative}: each shows how to
-label a layout that is already determined by the grid location and the
-sizing rules, so a reader ignoring the node would reach the same
-conclusion.  They are retained to document correct usage across the
-permitted parent nodes, not as evidence that the node is required in
-those situations---per Section~\ref{sec:scope}, it is not.
+Example~\ref{ex:shared-vertex-dg} is the motivating case of
+Section~\ref{sec:field-evidence}: the encoding it shows has no
+alternative today, and it is the reason for this proposal.  The others
+are shorter, and are included only to fix the calling conventions---the
+shared/independent pair, the reader-side dispatch, the Fortran bindings,
+and the remaining permitted parents.  Where they label a layout that the
+grid location and sizing rules already determine, that is noted in place
+rather than presented as a case requiring the node.
 
 \subsection{Example 1: Writing a Shared-DOF (CG) Solution}
 \label{ex:cg-write}
@@ -1768,66 +1749,7 @@ default:
 }
 \end{lstlisting}
 
-\subsection{Example 4: HDG Solver with Both DOF Storage Types}
-\label{ex:hdg}
-
-An HDG solver stores element-local volume DOFs and shared trace DOFs
-on the element skeleton.  The trace field is defined on \emph{face}
-elements, so the file must contain a face \texttt{Elements\_t} section
-and the trace solution must reference it through a point set.  Without
-that point set the array would be sized over the zone's volume
-elements, which is invalid
-(Section~\ref{sec:dofstorage-interp}).
-
-\begin{lstlisting}[language=C]
-/* ---- Volume DOFs (independent) ---- */
-int S_vol, F;
-cg_sol_write(fn, B, Z, "VolumeSolution",
-    CGNS_ENUMV(InterpolationPoints), &S_vol);
-cg_sol_interpolation_order_write(fn, B, Z, S_vol, 3, 0);
-cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_vol, "end");
-cg_dof_storage_write(CGNS_ENUMV(Independent));
-
-/* ---- Face elements defining the skeleton ----
- * Faces occupy element indices firstFace..lastFace. */
-int Sec;
-cg_section_write(fn, B, Z, "Faces", CGNS_ENUMV(TRI_3),
-    firstFace, lastFace, 0, face_conn, &Sec);
-
-cgsize_t faceRange[2];
-faceRange[0] = firstFace;
-faceRange[1] = lastFace;
-
-/* ---- Case A: p=0 traces, one DOF per face ----
- * FaceCenter in a 3-D zone has no SIDS DataSize formula, so a
- * point set over face element indices is REQUIRED; cg_sol_write
- * alone would leave the field size undefined. */
-int S_trace;
-cg_sol_ptset_write(fn, B, Z, "TraceSolution",
-    CGNS_ENUMV(FaceCenter), CGNS_ENUMV(PointRange),
-    2, faceRange, &S_trace);
-cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_trace, "end");
-cg_dof_storage_write(CGNS_ENUMV(Shared));
-cg_field_write(fn, B, Z, S_trace, CGNS_ENUMV(RealDouble),
-    "TracePressure", trace_p, &F);
-
-/* ---- Case B: higher-order traces ----
- * InterpolationPoints with a point set listing the FACE element
- * indices.  Each listed face contributes N_DOFs(face) values, and
- * each face's block is shared by its two adjacent volume elements,
- * so Shared is the correct label (Section 4.2). */
-int S_trace_ho;
-cg_sol_ptset_write(fn, B, Z, "TraceSolution_HO",
-    CGNS_ENUMV(InterpolationPoints), CGNS_ENUMV(PointRange),
-    2, faceRange, &S_trace_ho);
-cg_sol_interpolation_order_write(fn, B, Z, S_trace_ho, 2, 0);
-cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_trace_ho, "end");
-cg_dof_storage_write(CGNS_ENUMV(Shared));
-cg_field_write(fn, B, Z, S_trace_ho, CGNS_ENUMV(RealDouble),
-    "TracePressure", trace_p_ho, &F);
-\end{lstlisting}
-
-\subsection{Example 5: Fortran Usage}
+\subsection{Example 4: Fortran Usage}
 \label{ex:fortran}
 
 \begin{lstlisting}[language=Fortran]
@@ -1846,31 +1768,7 @@ if (layout == Independent) then
 end if
 \end{lstlisting}
 
-\subsection{Example 6: Low-Order Finite Volume
-  (\texorpdfstring{DG $p=0$}{DG p=0})}
-\label{ex:fv}
-
-\begin{lstlisting}[language=C]
-/* Cell-centered FV solution */
-int S;
-cg_sol_write(fn, B, Z, "FlowSolution",
-    CGNS_ENUMV(CellCenter), &S);
-
-/* Explicitly record the independent layout */
-cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
-cg_dof_storage_write(CGNS_ENUMV(Independent));
-\end{lstlisting}
-
-A \texttt{CellCenter} solution is already unambiguously independent, so
-a reader could derive this without the tag.  Recording it anyway is
-recommended but optional: it lets a coupling framework or
-post-processor dispatch on one uniform query across all solution nodes
-in a file, instead of maintaining a special case for each grid
-location.  The tag is genuinely load-bearing---rather than merely
-tidy---in the cases of Examples~\ref{ex:hdg},
-\ref{ex:shared-vertex-dg}, \ref{ex:fsi}, and~\ref{ex:cht}.
-
-\subsection{Example 7: Independent DOFs on a Shared-Vertex Mesh}
+\subsection{Example 5: Independent DOFs on a Shared-Vertex Mesh}
 \label{ex:shared-vertex-dg}
 
 This example addresses the case where the mesh uses shared vertices
@@ -1946,217 +1844,43 @@ if (layout == CGNS_ENUMV(Independent)) {
 }
 \end{lstlisting}
 
-\subsection{Example 8: \texttt{DiscreteData\_t} with an Independent
-  Error Indicator}
-\label{ex:discrete}
+\subsection{Example 6: Other Permitted Parent Nodes}
+\label{ex:other-parents}
 
-This example shows a DG error indicator stored in a
-\texttt{DiscreteData\_t} node.  The usage is identical to
-\texttt{FlowSolution\_t}: only the \texttt{cg\_goto} path differs.
+Usage on \texttt{DiscreteData\_t} and \texttt{ZoneSubRegion\_t} is
+identical to \texttt{FlowSolution\_t}; only the \texttt{cg\_goto} path
+differs.
 
 \begin{lstlisting}[language=C]
-/* Create a cell-centered discrete data node for error indicators */
+/* DiscreteData_t: a cell-centered DG error indicator */
 int D;
 cg_discrete_write(fn, B, Z, "ErrorIndicator", &D);
-
 cg_goto(fn, B, "Zone_t", Z, "DiscreteData_t", D, "end");
 cg_gridlocation_write(CGNS_ENUMV(CellCenter));
-
-/* Mark as independent (element-local error estimates) */
 cg_dof_storage_write(CGNS_ENUMV(Independent));
-
-/* Write per-element error data */
 cg_array_write("ElementError", CGNS_ENUMV(RealDouble),
     1, &nElems, error_data);
-\end{lstlisting}
 
-Note that a single \texttt{cg\_goto} serves all three calls: neither
-\texttt{cg\_gridlocation\_write}, \texttt{cg\_dof\_storage\_write},
-nor \texttt{cg\_array\_write} moves the current position.
-
-\subsection{Example 9: \texttt{ZoneSubRegion\_t} with Boundary Flux Data}
-\label{ex:subreg}
-
-This example stores independent boundary flux data on a
-\texttt{ZoneSubRegion\_t} that references a boundary condition
-region.
-
-\begin{lstlisting}[language=C]
-/* The sub-region dimension is one less than the zone's cell
- * dimension, so query the base rather than hard-coding it. */
+/* ZoneSubRegion_t: per-face boundary fluxes.  The sub-region
+ * dimension is one less than the zone's cell dimension, so query
+ * the base rather than hard-coding it. */
 char basename[CGIO_MAX_NAME_LENGTH+1];
-int cellDim, physDim;
+int cellDim, physDim, SR;
 cg_base_read(fn, B, basename, &cellDim, &physDim);
-
-/* Create a sub-region referencing a BC */
-int SR;
 cg_subreg_bcname_write(fn, B, Z, "WallFluxes",
     cellDim - 1, "Wall_BC", &SR);
-
-/* Mark as independent (each face owns its own flux values) */
 cg_goto(fn, B, "Zone_t", Z, "ZoneSubRegion_t", SR, "end");
 cg_dof_storage_write(CGNS_ENUMV(Independent));
-
-/* Write flux data on the sub-region */
 cg_array_write("HeatFlux", CGNS_ENUMV(RealDouble),
     1, &nBCFaces, heat_flux);
 \end{lstlisting}
 
-\subsection{Example 10: Solver Restart with DOF-Storage-Aware Read}
-\label{ex:restart}
-
-A solver reading a restart file must reconstruct the solution state
-correctly based on the DOF storage layout.
-
-\begin{lstlisting}[language=C]
-/* Read solution metadata */
-char sol_name[CGIO_MAX_NAME_LENGTH+1];
-CGNS_ENUMT(GridLocation_t) loc;
-cg_sol_info(fn, B, Z, S, sol_name, &loc);
-
-CGNS_ENUMT(DofStorage_t) layout;
-cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
-cg_dof_storage_read(&layout);
-
-/* Read the field data.  In a generic restart loop, call
- * cg_field_info(fn,B,Z,S,F,...) first to discover field names
- * and types before calling cg_field_read. */
-cg_field_read(fn, B, Z, S, "Pressure",
-    CGNS_ENUMV(RealDouble), range_min, range_max,
-    pressure_buf);
-
-/* Reconstruct based on the DOF storage layout */
-if (layout == CGNS_ENUMV(Shared)) {
-    /* DOFs are shared at mesh vertices/edges/faces.
-     * Map directly to the global DOF vector. */
-    reconstruct_shared(pressure_buf, loc, mesh);
-
-} else if (layout == CGNS_ENUMV(Independent)) {
-    /* DOFs are element-local.  Each element owns its
-     * own copy of values at shared interfaces. */
-    reconstruct_independent(pressure_buf, loc, mesh);
-
-} else {
-    /* DofStorageNull: legacy file.  Apply the Section 6.2
-     * inference rules, which for CellCenter and
-     * InterpolationPoints give Independent, and for Vertex
-     * with DataSize == VertexSize give Shared. */
-    reconstruct_legacy(pressure_buf, loc, mesh);
-}
-\end{lstlisting}
-
-\subsection{Example 11: FSI Coupling --- Structural and Fluid Solutions}
-\label{ex:fsi}
-
-In Fluid-Structure Interaction (FSI) applications, a single zone may
-carry both fluid and structural solution fields with different
-DOF storage layouts.  A continuous FEM structural solver stores shared
-displacement DOFs, while a DG fluid solver stores element-local flow
-variables.  Separate \texttt{FlowSolution\_t} nodes with distinct
-\texttt{DofStorage\_t} values allow coupling frameworks to correctly
-interpret and transfer each field.
-
-\begin{lstlisting}[language=C]
-int F;
-
-/* Structural solution: shared FEM displacement DOFs */
-int S_struct;
-cg_sol_write(fn, B, Z, "StructuralDisplacement",
-    CGNS_ENUMV(Vertex), &S_struct);
-cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_struct, "end");
-cg_dof_storage_write(CGNS_ENUMV(Shared));
-cg_field_write(fn, B, Z, S_struct, CGNS_ENUMV(RealDouble),
-    "DisplacementX", disp_x, &F);
-cg_field_write(fn, B, Z, S_struct, CGNS_ENUMV(RealDouble),
-    "DisplacementY", disp_y, &F);
-
-/* Fluid solution: element-local DG flow field */
-int S_fluid;
-cg_sol_write(fn, B, Z, "FluidSolution",
-    CGNS_ENUMV(InterpolationPoints), &S_fluid);
-cg_sol_interpolation_order_write(fn, B, Z, S_fluid, 3, 0);
-cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S_fluid, "end");
-cg_dof_storage_write(CGNS_ENUMV(Independent));
-cg_field_write(fn, B, Z, S_fluid, CGNS_ENUMV(RealDouble),
-    "Pressure", pressure, &F);
-cg_field_write(fn, B, Z, S_fluid, CGNS_ENUMV(RealDouble),
-    "VelocityX", vel_x, &F);
-
-/* A coupling framework reading this zone can query each
- * FlowSolution_t's DofStorage to determine the correct
- * interpolation and transfer strategy:
- *   - Shared:      global shared-DOF interpolation
- *   - Independent: element-local projection */
-\end{lstlisting}
-
-The same pattern applies when the structural and fluid domains are in
-separate zones.  The DOF storage metadata on each zone's
-\texttt{FlowSolution\_t} nodes enables the coupling framework to
-apply the correct inter-code transfer operators without relying on
-naming conventions or external configuration.
-
-\subsection{Example 12: Conjugate Heat Transfer --- Perfect and
-  Imperfect Thermal Contact}
-\label{ex:cht}
-
-Conjugate heat transfer (CHT) simulations couple a fluid temperature
-field (often stored at cell centers or DG DOFs) with a solid
-temperature field (often stored as a shared-DOF CG FEM solution).
-The DOF storage metadata disambiguates the two layouts and informs the
-coupling framework how to perform the interface transfer.
-
-\begin{lstlisting}[language=C]
-char basename[CGIO_MAX_NAME_LENGTH+1];
-int cellDim, physDim, F;
-cg_base_read(fn, B, basename, &cellDim, &physDim);
-
-/* ---- Fluid zone: FV/DG temperature (independent) ---- */
-int S_fluid;
-cg_sol_write(fn, B, fluidZone, "ThermalSolution",
-    CGNS_ENUMV(CellCenter), &S_fluid);
-cg_goto(fn, B, "Zone_t", fluidZone,
-    "FlowSolution_t", S_fluid, "end");
-cg_dof_storage_write(CGNS_ENUMV(Independent));
-cg_field_write(fn, B, fluidZone, S_fluid,
-    CGNS_ENUMV(RealDouble), "Temperature", T_fluid, &F);
-
-/* ---- Solid zone: CG FEM temperature (shared) ---- */
-int S_solid;
-cg_sol_write(fn, B, solidZone, "ThermalSolution",
-    CGNS_ENUMV(Vertex), &S_solid);
-cg_goto(fn, B, "Zone_t", solidZone,
-    "FlowSolution_t", S_solid, "end");
-cg_dof_storage_write(CGNS_ENUMV(Shared));
-cg_field_write(fn, B, solidZone, S_solid,
-    CGNS_ENUMV(RealDouble), "Temperature", T_solid, &F);
-
-/* ---- Interface heat flux on the solid side (face-local) ---- */
-int SR;
-cg_subreg_bcname_write(fn, B, solidZone, "FluidInterface",
-    cellDim - 1, "FluidInterface_BC", &SR);
-cg_goto(fn, B, "Zone_t", solidZone,
-    "ZoneSubRegion_t", SR, "end");
-cg_dof_storage_write(CGNS_ENUMV(Independent));
-cg_array_write("HeatFlux", CGNS_ENUMV(RealDouble),
-    1, &nInterfaceFaces, heat_flux);
-\end{lstlisting}
-
-With \emph{perfect} thermal contact the fluid-side and solid-side
-interface temperatures are equal; the coupling framework can enforce
-this constraint knowing the solid temperature is
-\texttt{Shared} (shared vertex DOFs) and the fluid
-temperature is \texttt{Independent} (cell-centered).
-
-With \emph{imperfect} thermal contact (finite thermal resistance),
-a temperature jump $\Delta T$ exists at the interface.  Each domain
-retains its own interface temperature, and the coupling framework
-applies the resistance relation $q = \Delta T / R$ between them.
-No change to the \texttt{DofStorage\_t} labels is needed:
-the fluid and solid temperatures are stored and tagged independently
-in their respective zones, and the jump is an emergent result of the
-coupling rather than a property of either field's storage layout.
-
-%% ═════════════════════════════════════════════════════════════════════════
+A single \texttt{cg\_goto} serves every subsequent call: neither
+\texttt{cg\_gridlocation\_write}, \texttt{cg\_dof\_storage\_write}, nor
+\texttt{cg\_array\_write} moves the current position.  Both layouts
+above are already determined by the grid location and the sizing rules
+(Section~\ref{sec:scope}); the node is written for uniformity, so that a
+reader can dispatch on one query across every solution node in a file.
 \section{SIDS Impact}
 \label{sec:sids-impact}
 %% ═════════════════════════════════════════════════════════════════════════
@@ -2315,7 +2039,7 @@ existing CGNS conventions and SIDS precedent.
   partially addresses such cases: interface fluxes or
   surface-local fields that require a DOF storage label
   can be stored in a \texttt{ZoneSubRegion\_t} referencing the
-  relevant boundary condition (see Example~\ref{ex:cht}).
+  relevant boundary condition.
 
 \item \textbf{Per-solution-node granularity (not per-field).}
   The DOF storage layout applies at the \texttt{FlowSolution\_t} level,
@@ -2410,7 +2134,8 @@ existing CGNS conventions and SIDS precedent.
 
 \item[Placing the node on \texttt{Zone\_t} or \texttt{Base\_t}.]
   Rejected.  A single zone routinely carries solutions with different
-  layouts (Examples~\ref{ex:hdg}, \ref{ex:fsi}), so a zone-level
+  layouts---an HDG solver's volume and trace blocks, for
+  instance---so a zone-level
   setting could not express them.
 \end{description}
 
