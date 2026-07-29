@@ -84,7 +84,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small\color{cgnsblue} CPEX 0050 --- DOF Storage Type}
-\fancyhead[R]{\small\color{cgnsblue} Version 1.1}
+\fancyhead[R]{\small\color{cgnsblue} Version 1}
 \fancyfoot[C]{\small\color{cgnsblue}\thepage}
 \renewcommand{\headrulewidth}{0.5pt}
 \renewcommand{\headrule}{\hbox to\headwidth{\color{cgnsgold}\leaders\hrule height\headrulewidth\hfill}}
@@ -105,8 +105,8 @@
   {\LARGE\bfseries\color{cgnsblue} CGNS Proposal for Extension 0050}\\[0.6em]
   {\Large\color{cgnsteal} DOF Storage Type}\\[0.4em]
   {\color{cgnsgold}\rule{0.4\textwidth}{0.8pt}}\\[0.6em]
-  {\large Version 1.1}\\[0.6em]
-  July 27, 2026
+  {\large Version 1}\\[0.6em]
+  July 29, 2026
 \end{center}
 
 \vspace{1em}
@@ -125,10 +125,11 @@ GitHub Issue     & to be assigned by the CPEX editors \\
 Reference Impl.  & pending (see Section~\ref{sec:refimpl}) \\
 Target Release   & pending (see Section~\ref{sec:refimpl}) \\
 Date First Posted & April 21, 2026 \\
-Date of Last Revision & July 27, 2026 \\
-Prior Title      & ``Support Solution Continuity Type in CGNS''
-                   (\texttt{SolutionContinuity\_t}); renamed in v1.1---see
-                   Section~\ref{sec:naming-history} \\
+Date of Last Revision & July 29, 2026 \\
+Prior Registry Entry & Listed while in draft as ``Support Solution
+                   Continuity Type in CGNS''
+                   (\texttt{CPEX-0050-SolutionContinuity.pdf});
+                   see Section~\ref{sec:naming-history} \\
 SIDS Status      & proposal under review \\
 Filemap Status   & proposal under review \\
 MLL Status       & proposal under review \\
@@ -150,17 +151,27 @@ freedom (DOFs) are stored relative to shared mesh entities.  The two values---\t
 and \texttt{Independent}---answer a single question: for DOFs located at a geometric entity
 (vertex, edge, or face) that is shared between adjacent elements, does each adjacent element
 index the \emph{same} buffer slot (shared storage), or does each element own its
-\emph{own} independent slot (independent storage)?  This is a statement about data layout
+\emph{own} independent slot (independent storage)?  The question is always posed relative to
+a stated reference entity set---for a block indexed over volume elements those are the volume
+elements; for an interface block they are the volume elements adjacent to each listed face or
+edge (Section~\ref{sec:dofstorage-interp}).  This is a statement about data layout
 only; it makes no claim about the mathematical smoothness of the resulting field.
-Most CFD codes use finite volume (FV) discretizations, which are inherently independent---one
-value per cell with no DOF sharing across faces.  Discontinuous Galerkin (DG) methods share
-this property, while continuous Galerkin (CG) finite element methods use shared DOF storage.
-The distinction is fundamental to the correct interpretation of solution data but is not
-captured by any existing CGNS construct.  The proposal is broadly applicable: it is valid for
-any polynomial order, any discretization family (including finite element, finite volume,
-and spectral element methods), and interacts naturally with the higher-order solution
-infrastructure introduced by CPEX~0045~\cite{cpex0045} and the integration-point
-infrastructure introduced by CPEX~0047~\cite{cpex0047}.
+
+The gap being closed is specific.  For every encoding legal today, the DOF layout is already
+fixed by \texttt{GridLocation\_t} together with the SIDS \texttt{DataSize} rules, so this
+proposal is not a remedy for ambiguity.  What cannot presently be expressed at all is an
+element-local layout at a shared-entity grid location: a solver storing per-element solution
+values at positions that coincide with shared mesh vertices has no conforming encoding, and
+the workaround observed in practice is to duplicate the grid coordinates, destroying the
+shared-vertex connectivity that mesh walking depends on (Section~\ref{sec:field-evidence}).
+Accordingly \texttt{Independent} at \texttt{GridLocation\_t = Vertex}, together with the
+\texttt{PointList} ordering rule of Section~\ref{sec:shared-vertex-layout}, is the
+load-bearing content of this proposal; \texttt{Shared} is retained for explicit
+self-description of the layout that the connectivity already implies.  The node is defined
+for any polynomial order and any discretization family, and complements---without
+duplicating---the higher-order solution infrastructure of CPEX~0045~\cite{cpex0045} and the
+integration-point infrastructure of CPEX~0047~\cite{cpex0047}, both of which are
+element-local by construction and require no such designator.
 
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -195,8 +206,11 @@ This distinction affects:
 \begin{enumerate}[leftmargin=2em]
 \item \textbf{Data size and layout.}  A DG solution on a mesh with
   shared vertices stores more values than a CG solution on the same
-  mesh.  Post-processors that assume shared-vertex semantics will
-  misinterpret the data dimensions.
+  mesh.  Because the SIDS sizing rules for \texttt{Vertex} admit only
+  the shared count, such a solution cannot be written at that grid
+  location today; once a second sizing is admitted, a machine-readable
+  discriminator is required so that readers can tell which of the two
+  is in use.
 
 \item \textbf{Visualization and interpolation.}  Shared-DOF fields can be
   interpolated globally using the mesh connectivity; independent-DOF fields
@@ -219,6 +233,53 @@ This distinction affects:
   incorrectly treats DG data as shared-DOF data would average out these
   jumps.
 \end{enumerate}
+
+\subsection{Evidence from Practice: Grid Duplication as a Workaround}
+\label{sec:field-evidence}
+
+The requirement addressed here was raised by implementors of third-party
+CGNS readers, whose difficulty is concrete rather than
+theoretical.\footnote{Raised in correspondence with the CPEX champion,
+April 2026.  Specific parties and codes are intentionally not
+identified.}  The substance of their report, paraphrased:
+
+\begin{quote}
+At least one DG solver in production writes \emph{duplicate grid
+coordinates} for nodes that are geometrically shared, so that the grid
+and the solution have matching extents and existing readers will accept
+the file.  What is needed is a designator for the case of shared nodes
+in the grid but independent solution values at those nodes.  Retaining
+shared grid nodes is what permits walking through the mesh---stream
+tracing, for example.
+\end{quote}
+
+This is the expressiveness gap of Section~\ref{sec:prior-art} observed
+in the field, and it is the primary justification for this proposal.
+Because no designator exists, a solver wishing to emit element-local
+solution values at vertex positions must instead \emph{explode the
+mesh}: every element receives its own copy of each vertex, the
+\texttt{GridCoordinates\_t} array grows by the average vertex valence,
+and the shared-vertex connectivity that makes mesh walking possible is
+destroyed.  The cost is borne twice---once in file size, and again by
+every downstream reader that can no longer traverse the mesh.
+
+Two points about this evidence deserve emphasis, because they determine
+how narrow the proposal should be:
+
+\begin{itemize}[leftmargin=2em]
+\item The requirement is specifically for \emph{independent} DOFs at
+  \texttt{GridLocation\_t = Vertex} while the grid retains shared
+  vertices.  It is a request for one designator value, not for a
+  general classification of DOF storage.
+\item The constituency is third-party \emph{readers}, not solver
+  authors.  This matters
+  when weighing this proposal against the alternative of requiring
+  CPEX~0045's \texttt{InterpolationPoints}: a reader that must
+  implement \texttt{Family\_t}-level
+  \texttt{SolutionInterpolation\_t} machinery in order to interpret a
+  first-order DG field bears a cost out of proportion to the data,
+  and CPEX~0045 is itself not yet part of the standard.
+\end{itemize}
 
 \subsection{Inadequacy of Existing CGNS Constructs}
 
@@ -252,43 +313,66 @@ distinction:
   says nothing about vertex-, edge-, or face-located DOFs and does not
   generalize to other grid locations.
 
-\item[Data array size] can sometimes be used to \emph{infer} the
-  layout---an independent field will have $N_{\mathrm{elem}} \times
-  N_{\mathrm{DOF/elem}}$ values versus $N_{\mathrm{nodes}}$ for a shared
-  field.  However, this inference is fragile, ambiguous for $p=0$
-  (cell-centered) data, and breaks entirely for mixed-element meshes
-  or when point sets are used.
+\item[Data array size] together with \texttt{GridLocation\_t}
+  \emph{does} determine the layout for every encoding legal before this
+  CPEX, and it should be stated plainly that this is so: the SIDS
+  \texttt{DataSize} formula admits exactly one layout at each grid
+  location (Section~\ref{sec:legacy-inference} tabulates them), and it
+  does so irrespective of element mix.  What the sizing rules cannot do
+  is admit an element-local layout at a shared-entity grid location at
+  all---that layout is not merely ambiguous, it is inexpressible.  The
+  gap this CPEX addresses is therefore one of expressiveness, not of
+  ambiguity; see Section~\ref{sec:prior-art}.
 \end{description}
 
-\subsection{Generality Beyond Higher-Order Methods}
+\subsection{Scope and Non-Goals}
+\label{sec:scope}
 
-Although often discussed in the context of high-order finite elements,
-the shared/independent distinction is \textbf{not limited to
-higher-order methods}:
+This proposal is deliberately narrow.  Stating plainly what it does and
+does not close is the clearest way to show that it neither overlaps
+CPEX~0045 nor CPEX~0047.
+
+\paragraph{What it closes.}  One gap: element-local solution DOFs at
+positions coinciding with shared mesh vertices, with the shared-vertex
+grid retained.  This is the case of
+Section~\ref{sec:field-evidence}, it has no conforming encoding today,
+and it is not restricted to high-order methods---DG $p=1$ on a linear
+mesh is the most common instance, and the predefined element types
+extend the same pattern through fourth order.  Because the affected
+node is \texttt{FlowSolution\_t} (and its \texttt{DiscreteData\_t},
+\texttt{ZoneSubRegion\_t}, and \texttt{UserDefinedData\_t}
+counterparts), the designator belongs there rather than inside the
+higher-order interpolation infrastructure.
+
+\paragraph{What it does not close, by design.}
 
 \begin{itemize}[leftmargin=2em]
-\item \textbf{DG $p=0$} (piecewise constant) is essentially a
-  cell-centered finite volume representation.
-\item \textbf{DG $p=1$} (piecewise linear, independent DOFs) is widely
-  used and is a low-order method.
-\item \textbf{CG $p=1$} is standard continuous linear FEM, the most
-  common finite element discretization.
-\item Classical \textbf{finite volume} representations are inherently
-  independent ($p=0$ DG).
-\item \textbf{Hybridizable DG (HDG)} methods have both element-local
-  DOFs (independent) and trace DOFs on faces (shared on the
-  skeleton).
-\item \textbf{FSI and multi-physics coupling} often combines a
-  continuous FEM structural solver (shared displacement DOFs) with a
-  discontinuous DG or FV fluid solver (element-local flow variables)
-  within the same file or across coupled zones.
+\item \textbf{Nothing that is already determined.}  At
+  \texttt{CellCenter}, under CPEX~0045's
+  \texttt{InterpolationPoints}, and under CPEX~0047's
+  \texttt{IntegrationPoint}, the layout follows from the grid location
+  and the sizing rules.  Recording it there is permitted, and
+  recommended for uniformity, but it resolves nothing and this
+  proposal does not claim otherwise.
+\item \textbf{Higher-order DOF identification.}  Establishing which
+  DOFs of two adjacent elements correspond across a shared face---the
+  general dof-relation---requires per-element index mapping and
+  orientation conventions that this proposal does not supply.  For
+  arbitrary interpolation points it cannot be done at all from the
+  metadata CGNS currently defines
+  (Section~\ref{sec:dofstorage-interp}).
+\item \textbf{Field continuity.}  Whether duplicated DOF values agree
+  by construction---the difference between a continuous field stored
+  redundantly and a genuinely discontinuous one---is a distinct
+  property, not derivable from storage layout, and outside the scope
+  of this node.
+\item \textbf{Structured zones}, \texttt{NFACE\_n} sections, and
+  vector-conforming space orientation
+  (Sections~\ref{sec:ptlist-restrictions} and~\ref{sec:hdiv-hcurl}).
 \end{itemize}
 
-Accordingly, a proper metadata field should therefore live at the
-\texttt{FlowSolution\_t} level, applicable at any order, not solely
-within the higher-order interpolation infrastructure.
-
 \subsection{Prior Art: The DOF-Map Concept in ASCI-DMF / SAF}
+\label{sec:prior-art}
 
 The concept encoded by \texttt{DofStorage\_t} has well-established prior art in the
 scientific data management literature.  The ASCI Data Model Framework (ASCI-DMF) and
@@ -302,11 +386,19 @@ independent---corresponding to \texttt{DofStorage\_t = Independent}.
 
 Miller~\cite{miller2003} notes that for piecewise-linear coordinate fields the dof-relation
 and the mesh connectivity (topo-relation) are one and the same array, and are consequently
-``hopelessly confused'' in practice.  This is precisely the situation in most CGNS FV/CG
-files today: the \texttt{Elements\_t} connectivity doubles as the implied dof-map, and the
-absence of an explicit storage-layout tag makes it impossible to distinguish shared from
-independent DOF layouts without fragile inference from data dimensions.
-\texttt{DofStorage\_t} provides the explicit tag that resolves this ambiguity.
+``hopelessly confused'' in practice.  CGNS today is in exactly this position: it has no
+dof-relation layer, so the only dof-map available to a solution at a shared-entity grid
+location is the one implied by the \texttt{Elements\_t} connectivity.  This does not make
+existing files ambiguous---a conforming file is unambiguous, because \texttt{GridLocation\_t}
+together with the SIDS \texttt{DataSize} formula fixes the layout in every legal case
+(Section~\ref{sec:legacy-inference} tabulates them).  The cost is expressiveness: because the
+implied dof-map \emph{is} the connectivity, a solution whose DOFs are element-local cannot be
+written at \texttt{Vertex}, \texttt{EdgeCenter}, or \texttt{FaceCenter} at all.  CPEX~0045
+supplies an independent per-element dof-map for \texttt{InterpolationPoints}, and CPEX~0047
+does so for \texttt{IntegrationPoint}; both are element-local by construction.  What remains
+uncovered is element-local DOFs at \texttt{Vertex} on the predefined element types, where
+\texttt{DofStorage\_t} serves as the discriminator that makes a second sizing both legal and
+self-describing.
 
 It is important to note that \texttt{DofStorage\_t} encodes only the \emph{coarsest} level
 of DOF-map metadata---shared versus independent---which is sufficient for the vast majority
@@ -319,16 +411,25 @@ complementary layers of the same concept introduced in ASCI-DMF.
 \subsection{Naming History}
 \label{sec:naming-history}
 
-Version~1.0 of this proposal named the enumeration \texttt{SolutionContinuity\_t} with
-values \texttt{Continuous} and \texttt{Discontinuous}, and was posted under the title
-``Support Solution Continuity Type in CGNS.''  That vocabulary was misleading: readers
-consistently understood ``continuity'' as a claim about the mathematical smoothness of
-the field, which this node does not make.  Version~1.1 renames the type to
-\texttt{DofStorage\_t} with values \texttt{Shared} and \texttt{Independent} to state
-plainly that the node describes \emph{storage layout}.  The CPEX registry entry
-(scope line and attached document filename) requires a corresponding update.  No files
-have been written with the v1.0 names---there is no reference implementation yet---so no
-migration path is required.
+This proposal has not yet been presented, so the document carries no revision history.  It
+did, however, pass through two working names before this one, and both left traces that a
+reader may encounter---hence this note.
+
+An early draft used \texttt{SolutionRepresentation\_t}, which is where the former source
+filename \texttt{CPEX-0050-solution-representation.tex} came from.  A later draft used
+\texttt{SolutionContinuity\_t}, with values \texttt{Continuous} and
+\texttt{Discontinuous}, and it is under that name that the CPEX registry currently lists
+the entry (scope line ``Support Solution Continuity Type in CGNS,'' attachment
+\texttt{CPEX-0050-SolutionContinuity.pdf}).  That vocabulary proved misleading: readers
+consistently understood ``continuity'' as a claim about the mathematical smoothness of the
+field, which this node does not make.
+
+The name adopted here is \texttt{DofStorage\_t}, with values \texttt{Shared} and
+\texttt{Independent}, chosen to state plainly that the node describes \emph{storage
+layout}.  The source document and its PDF are named to match
+(\texttt{CPEX-0050-dof-storage}).  \textbf{The registry entry requires a corresponding
+update} to its scope line and attachment.  No files have been written with either earlier
+name---there is no reference implementation yet---so no migration path is required.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Detailed Description}
@@ -448,21 +549,50 @@ CPEX and is a natural subject for a future, narrowly scoped proposal.
 
 \subsubsection{Rationale for Two-Value Classification}
 
-The binary \texttt{Shared}/\texttt{Independent} classification is
-deliberate.  Methods that appear to require finer distinctions are
-already handled by the existing two values, combined with standard
+The two values are not of equal weight, and the proposal is clearer for
+saying so.
+
+\texttt{Independent} is load-bearing: at
+\texttt{GridLocation\_t = Vertex} it admits a layout that has no other
+conforming encoding, and a reader must consult it to size and interpret
+the field correctly (Section~\ref{sec:shared-vertex-layout}).
+
+\texttt{Shared} is confirmatory.  Wherever it is valid, the sharing it
+describes is already realized by the \texttt{Elements\_t} connectivity,
+so a reader that ignores the node reaches the same conclusion.  It is
+retained for three reasons: it makes the layout explicit rather than
+implied, so files are self-describing; it gives writers a way to state
+the layout positively instead of relying on the absence of
+\texttt{Independent}; and an enumeration offering only one substantive
+value would be an odd construct with no precedent in the SIDS.  It is
+\emph{not} retained on the basis that readers require it, and
+Section~\ref{sec:scope} should be read as limiting the claims made for
+it.  In particular, \texttt{Shared} is meaningless at $p=0$ and invalid
+on a volume \texttt{InterpolationPoints} block
+(Section~\ref{sec:dofstorage-interp}).
+
+With that asymmetry stated, methods that appear to require finer
+distinctions are handled by the two values combined with standard
 CGNS patterns:
 
 \begin{description}[leftmargin=2em]
-\item[HDG and mixed-layout methods] use both element-local
-  volume DOFs and globally shared trace DOFs.  These are stored as
-  separate \texttt{FlowSolution\_t} nodes---one marked
-  \texttt{Independent}, the other
-  \texttt{Shared}---following the same pattern CGNS already
-  uses to separate fields at different \texttt{GridLocation\_t} values.
-  A dedicated \texttt{MixedStorage} value would conflate two distinct
-  data layouts into a single node, making it harder, not easier, for
-  post-processors to interpret the data.
+\item[HDG and mixed-layout methods] use both element-local volume DOFs
+  and face-local trace DOFs.  Note that the trace space of the standard
+  hybridizable formulation is \emph{not} globally continuous: it
+  consists of face-wise polynomials with no continuity imposed between
+  adjacent faces, so trace DOFs are generally discontinuous along
+  skeleton edges and vertices.  \texttt{Shared} on a trace block
+  therefore asserts only that the two volume elements adjacent to a
+  given face index the same DOF block for that face---the reference
+  entity set is the adjacent \emph{volume} elements, per
+  Section~\ref{sec:dofstorage-interp}---and asserts nothing about
+  continuity across the skeleton.  The two layouts are stored as
+  separate \texttt{FlowSolution\_t} nodes, following the same pattern
+  CGNS already uses to separate fields at different
+  \texttt{GridLocation\_t} values.  A dedicated \texttt{MixedStorage}
+  value would conflate two distinct data layouts into a single node,
+  making it harder, not easier, for post-processors to interpret the
+  data.
 
 \item[Penalized / weakly-continuous DG methods] enforce continuity
   through penalty terms in the variational formulation, but the data
@@ -1117,13 +1247,39 @@ construction, the concatenation of the zone's element connectivity, it
 duplicates data already present in the \texttt{Elements\_t} sections at
 a cost of one \texttt{cgsize\_t} per DOF.  This is exactly the
 conflation of dof-relation and topo-relation that
-Miller~\cite{miller2003} describes.  The encoding exists because it is
-the only way to keep \texttt{GridLocation\_t = Vertex}---and therefore
-the shared-vertex connectivity used for geometry operations---while
-storing independent values.  When that is not required,
-\texttt{InterpolationPoints} or \texttt{IntegrationPoint} is the
-preferred encoding: both size the array from per-element DOF counts
-without a redundant index list.
+Miller~\cite{miller2003} describes.  The overhead should be weighed
+honestly against the two alternatives.
+
+Writing the solution at \texttt{InterpolationPoints} instead does
+\emph{not} destroy the shared-vertex connectivity:
+\texttt{GridCoordinates\_t} and \texttt{Elements\_t} are untouched, and
+mesh walking continues to work.  On capability alone, therefore, the
+0045 route also satisfies the requirement of
+Section~\ref{sec:field-evidence}, and this proposal should not claim
+otherwise.  What it offers over that route is a far smaller
+implementation burden for readers---no \texttt{Family\_t}-level
+\texttt{SolutionInterpolation\_t} lookup, no basis evaluation, no
+control-point machinery---for the common case in which the DOF
+positions simply \emph{are} the mesh vertices.  For first-order DG that
+distinction is the difference between reading one extra scalar node and
+implementing an interpolation framework.
+
+The alternative actually observed in production, by contrast, is
+strictly worse than either: duplicating the grid coordinates
+(Section~\ref{sec:field-evidence}) inflates
+\texttt{GridCoordinates\_t} by the average vertex valence---far more
+than one \texttt{cgsize\_t} per DOF---and destroys the connectivity
+outright.  Measured against that, the \texttt{PointList} redundancy is
+a substantial improvement.
+
+Where CPEX~0045 or CPEX~0047 has been adopted and the DOF positions are
+not the mesh vertices, \texttt{InterpolationPoints} or
+\texttt{IntegrationPoint} remains the preferred encoding: both size the
+array from per-element DOF counts with no redundant index list.  It
+should also be acknowledged that community feedback has objected to
+\emph{existing} cases where an identity point set must be written
+purely as indirection; the redundancy here is a real cost to weigh, not
+a formality.
 
 \subsubsection{Other Grid Locations}
 
@@ -1257,9 +1413,9 @@ higher-order solution field.  They are orthogonal:
 \toprule
 & \textbf{Shared} & \textbf{Independent} \\
 \midrule
-Lagrange $p=1$ & CG FEM & DG $p=1$ \\
-Lagrange $p=3$ & CG spectral & DG spectral \\
-Hierarchical $p=2$ & CG (modal) & DG (modal) \\
+Lagrange $p=1$ & CG FEM$^{\ddagger}$ & DG $p=1$ \\
+Lagrange $p=3$ & CG spectral$^{\ddagger}$ & DG spectral \\
+Hierarchical $p=2$ & n/a$^{\S}$ & DG (modal) \\
 $p=0$ (constant) & n/a$^{\dagger}$ & FV / DG $p=0$ \\
 \bottomrule
 \end{tabular}
@@ -1270,6 +1426,29 @@ share: its single per-element DOF has no geometric support on the
 element boundary.  \texttt{Shared} is therefore not merely unusual at
 $p=0$ but meaningless, and \texttt{cgnscheck} should warn on it
 (Section~\ref{sec:cgnscheck}).}
+
+\noindent{\small $^{\ddagger}$~Realizable only at
+\texttt{GridLocation\_t = Vertex} on the predefined element types,
+where the \texttt{Elements\_t} connectivity supplies the DOF
+identification.  It is \emph{not} realizable under
+\texttt{InterpolationPoints}, where \texttt{Shared} is invalid on a
+volume block (Section~\ref{sec:dofstorage-interp}).  Since predefined
+element types reach only fourth order, shared storage is expressible
+only for $p \leq 4$.}
+
+\noindent{\small $^{\S}$~Hierarchical bases admitting a
+vertex/edge/face/interior mode decomposition support continuous
+assembly mathematically, but CPEX~0045's monomial encodings
+(\texttt{ParametricMonomialsPascal}, \texttt{CartesianMonomialsPascal})
+store modal coefficients that have no geometric support on any
+sub-entity, and 0045 fixes no sub-entity ordering for them.  There is
+consequently no entity to share and no DOF correspondence to
+establish, so \texttt{Shared} cannot be acted upon.  The same holds for
+\texttt{ParametricLagrange} with user-supplied control points: 0045
+guarantees a principal-vertices-first ordering only for
+\texttt{ElementInterpolation\_t}, not for
+\texttt{SolutionInterpolation\_t}, and defines no orientation-aware
+correspondence between the points of two adjacent elements.}
 
 \subsection{Recommended Practice}
 
@@ -1362,15 +1541,15 @@ The two proposals are complementary and do not conflict:
   reported as an error by \texttt{cgnscheck}.
 
 \item \textbf{CPEX~0047 does not subsume this proposal.}  It says
-  nothing about vertex-, edge-, or face-located DOFs, which is where
-  the shared/independent ambiguity actually bites, and it does not
+  nothing about vertex-, edge-, or face-located DOFs, which is the only
+  place a storage discriminator is load-bearing, and it does not
   cover \texttt{DiscreteData\_t}.
 
 \item \textbf{Boundary data.}  CPEX~0047 extends \texttt{BC\_t} and
   \texttt{BCDataSet\_t}; this CPEX deliberately does not
-  (Design Decision~\ref{dd:bcdata}).  Should per-BC DOF storage
-  metadata later prove necessary, the two proposals' boundary
-  extensions should be reconciled in that follow-on work.
+  (Design Decision~\ref{dd:bcdata}), and its \texttt{IntegrationPoint}
+  location already covers element-local boundary data, including the
+  weakly-imposed boundary conditions of continuous methods.
 \end{itemize}
 
 One editorial concern spans the two proposals: CPEX~0045's
@@ -1487,6 +1666,19 @@ reader applying this dispatch.
 All examples use the position-based API: \texttt{cg\_goto} to the
 target node, then \texttt{cg\_dof\_storage\_write}.  Error checking is
 omitted for brevity; production code must check every return value.
+
+The examples serve two different purposes, and it is worth separating
+them.  Example~\ref{ex:shared-vertex-dg} is the motivating
+case of Section~\ref{sec:field-evidence}: the encoding it shows has no
+alternative today, and it is the reason for this proposal.
+Example~\ref{ex:cg-write} is its counterpart, and
+Example~\ref{ex:dispatch} shows the reader-side dispatch that makes the
+pair useful.  The remainder are \emph{illustrative}: each shows how to
+label a layout that is already determined by the grid location and the
+sizing rules, so a reader ignoring the node would reach the same
+conclusion.  They are retained to document correct usage across the
+permitted parent nodes, not as evidence that the node is required in
+those situations---per Section~\ref{sec:scope}, it is not.
 
 \subsection{Example 1: Writing a Shared-DOF (CG) Solution}
 \label{ex:cg-write}
@@ -2103,22 +2295,22 @@ existing CGNS conventions and SIDS precedent.
   \texttt{BCData\_t}.  Boundary condition data arrays in
   \texttt{BCData\_t} are sized by the associated
   \texttt{PointList}/\texttt{PointRange} and \texttt{GridLocation\_t},
-  which already determine the data layout unambiguously.  In DG
-  methods, boundary conditions are typically applied weakly through
-  numerical fluxes; the element-local nature of the boundary data
-  follows from the DOF storage layout on the parent
-  \texttt{FlowSolution\_t} node.  Adding
-  \texttt{DofStorage\_t} to \texttt{BCData\_t} would be
-  redundant and would introduce a potential inconsistency if the BC
-  layout differed from the solution it constrains.  Should a
-  future use case require per-BC DOF storage metadata (e.g.,
-  coupling frameworks imposing boundary data in a different
-  layout than the interior, or interface conditions in CHT
-  simulations with imperfect thermal contact where a flux-jump
-  boundary condition is prescribed), it can be proposed as a
-  separate, narrowly scoped CPEX---coordinated with CPEX~0047's
-  \texttt{BC\_t}/\texttt{BCDataSet\_t} extensions---without affecting
-  this proposal.
+  which already determine the data layout unambiguously.  Adding
+  \texttt{DofStorage\_t} to \texttt{BCData\_t} would therefore be
+  redundant, and would introduce a potential inconsistency if the BC
+  layout differed from the solution it constrains.
+
+  No inference in the other direction is intended or valid: the layout
+  of boundary data does \emph{not} follow from the DOF storage layout of
+  the parent \texttt{FlowSolution\_t}, and weak imposition of boundary
+  conditions is not a DG-specific technique.  Nitsche and penalty
+  methods in continuous FEM and in isogeometric analysis routinely pair
+  a \texttt{Shared} interior solution with element-local boundary data
+  at face quadrature points.  Such data is already expressible:
+  CPEX~0047 permits \texttt{GridLocation\_t = IntegrationPoint} under
+  \texttt{BC\_t} and \texttt{BCDataSet\_t}, with
+  \texttt{ItgPointsStartOffset} fixing the per-face layout, so no
+  additional metadata is required for that case either.
   The \texttt{ZoneSubRegion\_t} extension introduced here
   partially addresses such cases: interface fluxes or
   surface-local fields that require a DOF storage label
@@ -2142,10 +2334,25 @@ existing CGNS conventions and SIDS precedent.
 \item \label{dd:permissive} \textbf{Semantically inconsistent
   combinations are permitted but not enforced.}
   The MLL does \emph{not} enforce consistency between
-  \texttt{DofStorage\_t} and \texttt{GridLocation\_t}.
-  A \texttt{CellCenter} solution is inherently element-local, making
-  \texttt{Shared} semantically contradictory, but the library
-  shall not reject such combinations.  This follows the established
+  \texttt{DofStorage\_t} and \texttt{GridLocation\_t}.  Two
+  combinations are defective, in different degrees:
+
+  \begin{itemize}[leftmargin=1.5em]
+  \item A \texttt{CellCenter} solution is inherently element-local, so
+    \texttt{Shared} is \emph{meaningless} there---the single
+    per-element DOF has no geometric support on the element boundary.
+    \texttt{cgnscheck} should warn.
+  \item \texttt{Shared} on an \texttt{InterpolationPoints} block whose
+    element set is the zone's volume elements is \emph{invalid}, not
+    merely odd: the sizing contradicts the definition of
+    \texttt{Shared}, and, independently, CPEX~0045 supplies no
+    DOF-to-sub-entity map with which sharing could be realized
+    (Section~\ref{sec:dofstorage-interp}).  \texttt{cgnscheck} should
+    report an error.
+  \end{itemize}
+
+  In neither case shall the library reject the combination on write.
+  This follows the established
   CGNS convention of being permissive in what is accepted: the
   standard documents correct usage; validation is delegated to
   application-level tools such as \texttt{cgnscheck}
@@ -2189,11 +2396,17 @@ existing CGNS conventions and SIDS precedent.
   \texttt{UserDefinedData\_t}, so applications storing fields there
   can label them properly.
 
-\item[Deriving the layout from array sizes.]  Rejected; see
-  Section~2.2.  The inference is ambiguous at $p=0$, breaks on
-  mixed-element meshes, and breaks whenever a point set is used.  It
-  is retained only as a best-effort fallback for legacy files
-  (Section~\ref{sec:legacy-inference}).
+\item[Deriving the layout from array sizes.]  Not rejected, and worth
+  stating accurately: for every encoding legal before this CPEX the
+  layout \emph{is} determined by \texttt{GridLocation\_t} and the SIDS
+  \texttt{DataSize} formula, irrespective of element mix
+  (Section~\ref{sec:legacy-inference}).  A discriminator becomes
+  necessary only once a second sizing is admitted at the same grid
+  location, which is what the \texttt{Vertex} plus \texttt{PointList}
+  encoding of Section~\ref{sec:shared-vertex-layout} does.  Outside
+  that case the node is confirmatory, and is recommended for
+  uniformity and self-description rather than required to resolve an
+  ambiguity.
 
 \item[Placing the node on \texttt{Zone\_t} or \texttt{Base\_t}.]
   Rejected.  A single zone routinely carries solutions with different

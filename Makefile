@@ -1,4 +1,4 @@
-# Makefile for CPEX-0050-compat-version.tex
+# Makefile for CPEX-0050-dof-storage.tex
 #
 # Usage:
 #   make -f Makefile          # build PDF (uses latexmk if available)
@@ -7,7 +7,7 @@
 #   make -f Makefile clean    # remove auxiliary files
 #   make -f Makefile distclean  # remove auxiliary files + PDF
 
-DOCNAME  := CPEX-0050-solution-representation
+DOCNAME  := CPEX-0050-dof-storage
 TEXFILE  := $(DOCNAME).tex
 PDF      := $(DOCNAME).pdf
 
