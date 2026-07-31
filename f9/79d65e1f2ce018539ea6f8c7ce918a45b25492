@@ -1,0 +1,20 @@
+CPEX-0050-reply-email.txt
+  s_58541cfde538a5::t_7c40450660ff23 1-28,32-33,35-100,105-130
+  s_58541cfde538a5::t_79c4fd11109558 29-31,34,101-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "f979d65e1f2ce018539ea6f8c7ce918a45b25492",
+  "prompts": {},
+  "sessions": {
+    "s_58541cfde538a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e233c360-a3a9-4947-88e1-de5dd8cb53f6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "M. Scot Breitenfeld <brtnfld@hdfgroup.org>"
+    }
+  }
+}
