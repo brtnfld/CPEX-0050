@@ -694,41 +694,52 @@ shared/independent distinction.
 \subsubsection{Enumeration Value Naming}
 \label{sec:value-naming}
 
-The values \texttt{Shared} and \texttt{Independent} are unprefixed,
-following CGNS convention: only the \texttt{Null} and
-\texttt{UserDefined} members of an enumeration carry the type-name
-prefix (cf.\ \texttt{GridLocationNull} versus \texttt{Vertex},
-\texttt{MassUnitsNull} versus \texttt{Kilogram}).
+For every CGNS enumeration, the string written to the file is the
+enumerator's own name; only the \texttt{Null} and \texttt{UserDefined}
+members are stored in abbreviated form, as \texttt{"Null"} and
+\texttt{"UserDefined"} (cf.\ \texttt{GridLocationNull} stored as
+\texttt{"Null"}, while \texttt{Vertex} is stored as \texttt{"Vertex"}).
+The choice of identifier is therefore also a choice of file-format
+token, not merely a source-level one.
 
-\texttt{InterfaceContinuity\_t} deliberately departs from that
-convention: its enumerators are \texttt{InterfaceContinuous} and
-\texttt{InterfaceDiscontinuous}, while the \emph{on-disk} strings remain
-\texttt{Continuous} and \texttt{Discontinuous}.  Bare
-\texttt{Continuous} and \texttt{Discontinuous} in a public header would
-be markedly more collision-prone than the values discussed below---both
-are common identifiers in numerical codes---and the on-disk names are
-what the SIDS constrains, so the prefix costs nothing in the file
-format.  If the committee prefers strict uniformity, the alternative is
-to prefix all four values of both enumerations; the reverse, unprefixing
-\texttt{InterfaceContinuity\_t}, is not recommended.
+Two naming patterns are established in the SIDS.  Most enumerations use
+bare domain-specific nouns---\texttt{Vertex}, \texttt{CellCenter},
+\texttt{Kilogram}, \texttt{Structured}.  Where the bare word would be too
+generic, however, CGNS prefixes it: every value of \texttt{BCType\_t}
+carries a \texttt{BC} prefix (\texttt{BCWall}, \texttt{BCInflow},
+\texttt{BCTunnelOutflow}) rather than risk \texttt{Wall} or
+\texttt{Inflow} in the global namespace, and those prefixed names appear
+on disk unchanged.
 
-The committee should nonetheless weigh a known risk.  Existing
-unprefixed CGNS enumeration values are domain-specific nouns
-(\texttt{Vertex}, \texttt{CellCenter}, \texttt{Kilogram},
-\texttt{Structured}), whereas \texttt{Shared} and especially
-\texttt{Independent} are generic adjectives that applications and I/O
-layers commonly define for unrelated purposes.  Because
-\texttt{cgnslib.h} injects enumeration values into the global C
-namespace, a collision would surface as a compile error in downstream
-code.  No collision exists in \texttt{cgnslib.h} today.
+\texttt{InterfaceContinuity\_t} follows the second pattern.
+\texttt{Continuous} and \texttt{Discontinuous} are common identifiers in
+numerical codes, and \texttt{cgnslib.h} injects enumeration values into
+the global C namespace, so the values are named
+\texttt{InterfaceContinuous} and \texttt{InterfaceDiscontinuous} in the C
+and Fortran bindings \emph{and} on disk.  This is the
+\texttt{BCType\_t} precedent applied, not a departure from convention.
 
-The alternative---\texttt{DofStorageShared} and
-\texttt{DofStorageIndependent}---trades a small departure from
-convention for collision safety.  This proposal retains the
-unprefixed names for consistency; the champion will adopt the
-prefixed names if the committee prefers.  Adopting them would change
-only the C and Fortran identifiers, not the on-disk strings, so it is
-a source-compatibility question rather than a file-format one.
+\paragraph{An open consistency question for the committee.}  The same
+argument applies to \texttt{DofStorage\_t}, whose values are currently
+the bare adjectives \texttt{Shared} and \texttt{Independent}.
+\texttt{Independent} in particular is a word that applications and I/O
+layers commonly define for unrelated purposes; no collision exists in
+\texttt{cgnslib.h} today, but one would surface as a compile error in
+downstream code.  Consistency with the sibling enumeration, and with
+\texttt{BCType\_t}, argues for \texttt{DofStorageShared} and
+\texttt{DofStorageIndependent}.
+
+Two points bear on the decision.  First, because the on-disk token
+follows the identifier, this is a \emph{file-format} choice and not, as
+an earlier draft of this section stated, a source-compatibility one; the
+stored strings would become \texttt{"DofStorageShared"} and
+\texttt{"DofStorageIndependent"}.  Second, it is therefore best settled
+now: no reference implementation exists and no files have been written,
+so the change is free today and carries a migration cost at any later
+point.  The champion's recommendation is to adopt the prefixed forms for
+both enumerations, and this document will be updated accordingly if the
+committee concurs; the alternative---leaving one enumeration prefixed and
+the other bare---is the one option with no principled justification.
 
 \subsection{New Enumeration: \texttt{InterfaceContinuity\_t}}
 \label{sec:continuity}
@@ -807,7 +818,7 @@ The two attributes are orthogonal, and each combination has a meaning:
 \begin{center}
 \begin{tabular}{lll}
 \toprule
-& \textbf{\texttt{Continuous}} & \textbf{\texttt{Discontinuous}} \\
+& \textbf{\texttt{...Continuous}} & \textbf{\texttt{...Discontinuous}} \\
 \midrule
 \texttt{Shared}      & CG; redundant$^{\dagger}$ & inconsistent$^{\ddagger}$ \\
 \texttt{Independent}\ & CG stored per element     & DG, FV, spectral $C^{-1}$ \\
@@ -823,7 +834,7 @@ permitted for uniformity.}
 hold two differing values.  \texttt{cgnscheck} should report an error
 (Section~\ref{sec:cgnscheck}).}
 
-The load-bearing cell is \texttt{Independent} + \texttt{Continuous}: a
+The load-bearing cell is \texttt{Independent} + \texttt{InterfaceContinuous}: a
 continuous field stored redundantly, which is exactly the CG
 spectral-element case above and the case that motivates this attribute.
 It is also the combination a reader most benefits from knowing, since it
@@ -2270,8 +2281,9 @@ Label: & \texttt{InterfaceContinuity\_t} \\
 DataType: & \texttt{C1} \\
 Dimension: & 1 \\
 Dimension Values: & Length of the string value \\
-Data: & \texttt{Null}, \texttt{UserDefined}, \texttt{Continuous},
-        or \texttt{Discontinuous} \\
+Data: & \texttt{Null}, \texttt{UserDefined},
+        \texttt{InterfaceContinuous}, or
+        \texttt{InterfaceDiscontinuous} \\
 Children: & None \\
 Cardinality: & 0,1 \\
 \bottomrule
@@ -2280,11 +2292,10 @@ Cardinality: & 0,1 \\
 
 \noindent Both are attribute-for-attribute the same as the
 \texttt{GridLocation\_t} node description, apart from the name, label,
-and permitted data values.  Note that the on-disk strings for
-\texttt{InterfaceContinuity\_t} are \texttt{Continuous} and
-\texttt{Discontinuous}: the \texttt{Interface} prefix appears in the C
-enumerators only, to keep those identifiers out of the global namespace
-(Section~\ref{sec:value-naming}).
+and permitted data values.  As for every CGNS enumeration, the stored
+strings are the enumerator names themselves; see
+Section~\ref{sec:value-naming} on why the values of this enumeration
+carry a prefix, following \texttt{BCType\_t}.
 
 \subsection{Affected File Mapping Figures}
 
@@ -2313,7 +2324,7 @@ the concrete value \texttt{Vertex}, whereas an absent
 \texttt{InterfaceContinuity} follows the identical convention: written
 only when not \texttt{InterfaceContinuityNull}, and absence meaning
 ``unspecified'' rather than any concrete value.  In particular, absence
-must not be read as \texttt{Continuous}.
+must not be read as \texttt{InterfaceContinuous}.
 
 When \texttt{DofStorageUserDefined} is written, the accompanying
 description node is an ordinary \texttt{Descriptor\_t} and follows
@@ -2496,9 +2507,10 @@ a file; the corresponding check is on the string.
   \texttt{UserDefined}) for files written by a newer library.
 
 \item[Error:] \texttt{InterfaceContinuity} node data is not one of
-  \texttt{"Null"}, \texttt{"UserDefined"}, \texttt{"Continuous"}, or
-  \texttt{"Discontinuous"}, with the same
-  newer-library degradation as above.
+  \texttt{"Null"}, \texttt{"UserDefined"},
+  \texttt{"InterfaceContinuous"}, or
+  \texttt{"InterfaceDiscontinuous"}, with the same newer-library
+  degradation as above.
 
 \item[Error:] \texttt{DofStorage\_t = Shared} together with
   \texttt{InterfaceContinuity\_t = Discontinuous} --- contradictory,
@@ -2738,7 +2750,7 @@ version threshold serves both.
 \texttt{cg\_dof\_storage\_write\_f} & Fortran binding for \texttt{cg\_dof\_storage\_write}. \\
 \texttt{cg\_dof\_storage\_read\_f} & Fortran binding for \texttt{cg\_dof\_storage\_read}. \\
 \addlinespace
-\texttt{InterfaceContinuity\_t} & New enumeration type: \texttt{InterfaceContinuityNull}, \texttt{InterfaceContinuityUserDefined}, \texttt{InterfaceContinuous}, \texttt{InterfaceDiscontinuous}.  The on-disk strings are \texttt{Continuous} and \texttt{Discontinuous}; the prefix is carried by the C enumerators only. \\
+\texttt{InterfaceContinuity\_t} & New enumeration type: \texttt{InterfaceContinuityNull}, \texttt{InterfaceContinuityUserDefined}, \texttt{InterfaceContinuous}, \texttt{InterfaceDiscontinuous}.  Stored on disk under the same names; see Section~\ref{sec:value-naming}. \\
 \texttt{InterfaceContinuityName} & String table for the enumeration values. \\
 \texttt{NofValidInterface\allowbreak Continuity} & Count of valid enumeration values (4). \\
 \texttt{cg\_InterfaceContinuity\allowbreak Name} & C: return the string name for an \texttt{InterfaceContinuity\_t} value. \\
