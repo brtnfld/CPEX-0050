@@ -4,8 +4,10 @@
 > corrections applied; scope **narrowed**; examples cut from twelve to six; source renamed and version
 > reset to 1. Build clean via `make`: **42 pp.**, no undefined references. Provenance **resolved** —
 > private email, real, evidenced by a production workaround. Disposition: **narrow, not withdraw.**
-> Document and registry entry are **published** (`CPEX-0050` `main`, `cgns.github.io` `develop`).
-> The reply below is verified against the published PDF and ready to send.
+> **Expanded** with `InterfaceContinuity_t` after the reviewer accepted it was worth recording, and
+> both enumerations moved to prefixed value names (on disk as well as in C, per `BCType_t`).
+> Document and registry entry are **published** (`CPEX-0050` `main`, `cgns.github.io` `develop`);
+> 50 pp. The reply below is verified against the published PDF and ready to send.
 
 **Document under review**: `CPEX-0050-dof-storage.tex` — renamed from
 `CPEX-0050-solution-representation.tex`; builds `CPEX-0050-dof-storage.pdf`
@@ -583,11 +585,37 @@ reviewing in exactly the register you used; half sentences that identify the rig
 considerably more than length. And no need to apologise for timing either — the delay produced a
 better document than a fast confirmation would have.
 
-**On "purely informative."** Thank you for reconsidering, and for saying so explicitly. I will treat
-interface consistency — whether duplicated DOF values agree by construction — as optional recorded
-information rather than something to leave out. It is currently written up as an explicit non-goal so
-that the storage question stays separable; I will propose it as a distinct, optional attribute so
-that neither depends on the other.
+**On "purely informative."** Thank you for reconsidering, and for saying so explicitly. I have acted
+on it: the proposal now defines a second attribute, `InterfaceContinuity_t`, alongside the storage
+one. It records exactly the property your sentence identified — where storage duplicates DOFs at an
+interface, whether the copies agree by construction — and it is optional, orthogonal to
+`DofStorage_t`, and explicitly not verified by the library.
+
+Three things about it are worth flagging, since each is a place I could have overreached and chose not
+to:
+
+- It records *agreement*, not smoothness order. `C^k` for `k >= 1` remains basis metadata and stays
+  with 0045, exactly as the storage attribute leaves order alone.
+- It is a writer's assertion. The MLL cannot check it without resolving the DOF correspondence, which
+  for arbitrary interpolation points is not generally possible — your R4 point again. `cgnscheck` may
+  sample duplicated values and warn, and I have documented that check as necessarily partial rather
+  than authoritative, so a clean result is not a guarantee.
+- It is meaningful only where duplication occurs, and vacuous rather than wrong elsewhere.
+
+The orthogonality is where it earns its place: `Independent` + `Continuous` is the CG-stored-per-element
+case, and it is the only combination in which welding duplicated DOFs is both safe and worth doing.
+`Shared` + `Discontinuous` is contradictory and is a `cgnscheck` error. There is also a new design
+decision recording why this is a second node rather than additional values of the first: a writer
+usually knows its storage layout but may not be in a position to assert continuity, and one combined
+enumeration would force it to either overstate its knowledge or say nothing.
+
+One consequence you may want to weigh, since it touches the file format. Both enumerations now use
+prefixed value names — `DofStorageShared`, `DofStorageIndependent`, `InterfaceContinuous`,
+`InterfaceDiscontinuous` — in the C bindings and on disk alike, following `BCType_t`, where `BCWall`
+and `BCInflow` are prefixed precisely because the bare nouns are too generic. Bare `Continuous` or
+`Independent` in `cgnslib.h` seemed an avoidable hazard. This is a file-format choice rather than a
+cosmetic one, since CGNS stores the enumerator name itself, and it is free only until an
+implementation exists — which is why I would rather settle it now than after 5.0.
 
 **On the real need.** Your Tecplot observation is the most useful thing in your reply. That the same
 duplicate-geometry workaround is forced by a second, unrelated format — and that HO support there is
@@ -617,13 +645,15 @@ storage, and cannot end up describing the same data in contradictory terms — w
 two overlapping CGNS encodings become painful for readers. The target release is now stated in the
 document, jointly with 0045, along with the reasoning.
 
-**Where that leaves the document.** The revision you asked for is essentially done. Scope is narrowed
+**Where that leaves the document.** The revision you asked for is done, and the expansion with it. Scope is narrowed
 to element-local DOFs at `GridLocation_t = Vertex` with the shared-vertex grid retained; the
 finite-volume, HDG, FSI and conjugate-heat-transfer motivations are gone along with their examples;
 every ambiguity claim is removed, since you were right that `GridLocation_t` plus the SIDS `DataSize`
 rules already determine the layout in every legal encoding today; and `Independent` is identified as
 the only load-bearing value, with `Shared` retained for self-description alone. Twelve examples became
-six and the document is shorter. Specific corrections from your comments: the HDG trace bullet no
+six. The document then grew again to accommodate the second attribute, which I think is the right
+trade: what came out argued for breadth the proposal had disclaimed, whereas what went in is
+specification for a property nothing else records. Specific corrections from your comments: the HDG trace bullet no
 longer claims those DOFs are globally shared, the reference entity set is now stated in the normative
 definition rather than only in the 0045 interaction section, the weak-BC inference is deleted, the
 `CellCenter`/`InterpolationPoints` inconsistency between Design Decision 3 and §4.2 is reconciled, and
