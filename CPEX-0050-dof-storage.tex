@@ -103,7 +103,7 @@
 \begin{center}
   \includegraphics[width=0.25\textwidth]{CGNS_logo_1.png}\\[1.2em]
   {\LARGE\bfseries\color{cgnsblue} CGNS Proposal for Extension 0050}\\[0.6em]
-  {\Large\color{cgnsteal} DOF Storage Type}\\[0.4em]
+  {\Large\color{cgnsteal} DOF Storage and Interface Continuity}\\[0.4em]
   {\color{cgnsgold}\rule{0.4\textwidth}{0.8pt}}\\[0.6em]
   {\large Version 1}\\[0.6em]
   July 29, 2026
@@ -117,7 +117,9 @@
 \begin{tabular}{@{} >{\bfseries\color{cgnsblue}}l p{0.60\linewidth} @{}}
 \toprule
 CPEX\#           & 0050 \\
-Scope            & Record DOF storage layout: shared or independent \\
+Scope            & Record DOF storage layout (shared or independent) and,
+                   where DOFs are duplicated, whether the represented
+                   field is continuous across element interfaces \\
 Champion         & M.\ Scot Breitenfeld \\
 Organization     & The HDF Group \\
 E-mail           & \href{mailto:brtnfld@hdfgroup.org}{brtnfld@hdfgroup.org} \\
@@ -173,6 +175,15 @@ for any polynomial order and any discretization family, and complements---withou
 duplicating---the higher-order solution infrastructure of CPEX~0045~\cite{cpex0045} and the
 integration-point infrastructure of CPEX~0047~\cite{cpex0047}, both of which are
 element-local by construction and require no such designator.
+
+A second, independent attribute, \texttt{InterfaceContinuity\_t}, records something the
+storage layout cannot: where DOFs are duplicated at element interfaces, whether the copies
+agree by construction.  A continuous spectral-element field stored per element and a
+discontinuous Galerkin field stored per element are indistinguishable in CGNS today---same
+grid location, same sizing, same basis---yet only the former may be safely welded into a
+continuous reconstruction.  This attribute is optional, is not verified by the library, and
+is orthogonal to \texttt{DofStorage\_t}; it is the one item here that no other CGNS metadata
+supplies.
 
 
 %% ═════════════════════════════════════════════════════════════════════════
@@ -384,11 +395,13 @@ higher-order interpolation infrastructure.
   arbitrary interpolation points it cannot be done at all from the
   metadata CGNS currently defines
   (Section~\ref{sec:dofstorage-interp}).
-\item \textbf{Field continuity.}  Whether duplicated DOF values agree
-  by construction---the difference between a continuous field stored
-  redundantly and a genuinely discontinuous one---is a distinct
-  property, not derivable from storage layout, and outside the scope
-  of this node.
+\item \textbf{Smoothness order.}  Whether duplicated DOF values agree by
+  construction \emph{is} recorded, by the separate
+  \texttt{InterfaceContinuity} attribute of
+  Section~\ref{sec:continuity}---it is a distinct property and not
+  derivable from storage layout.  What remains out of scope is the
+  \emph{order} of smoothness: $C^k$ for $k \geq 1$ is a property of the
+  basis and belongs in CPEX~0045's interpolation metadata.
 \item \textbf{Structured zones}, \texttt{NFACE\_n} sections, and
   vector-conforming space orientation
   (Sections~\ref{sec:ptlist-restrictions} and~\ref{sec:hdiv-hcurl}).
@@ -497,7 +510,16 @@ The proposal introduces:
   write the DOF storage layout, following the pattern established by
   \texttt{cg\_gridlocation\_read} / \texttt{cg\_gridlocation\_write}
   (Sections~\ref{sec:mll} and~\ref{sec:mll-impl}).
-\item Fortran bindings for that pair (Example~\ref{ex:fortran}).
+\item A second, independent enumeration
+  \texttt{InterfaceContinuity\_t} and its optional child node
+  \texttt{InterfaceContinuity}, on the same four parents, recording
+  whether duplicated DOFs represent a field that is continuous across
+  element interfaces (Section~\ref{sec:continuity}).  This answers a
+  different question from \texttt{DofStorage\_t} and is the one piece of
+  information here that no other CGNS metadata can supply.
+\item A second pair of position-based functions for that attribute,
+  built on the same address-helper mechanism.
+\item Fortran bindings for both pairs (Example~\ref{ex:fortran}).
 \end{enumerate}
 
 \subsection{New Enumeration: \texttt{DofStorage\_t}}
@@ -678,6 +700,18 @@ following CGNS convention: only the \texttt{Null} and
 prefix (cf.\ \texttt{GridLocationNull} versus \texttt{Vertex},
 \texttt{MassUnitsNull} versus \texttt{Kilogram}).
 
+\texttt{InterfaceContinuity\_t} deliberately departs from that
+convention: its enumerators are \texttt{InterfaceContinuous} and
+\texttt{InterfaceDiscontinuous}, while the \emph{on-disk} strings remain
+\texttt{Continuous} and \texttt{Discontinuous}.  Bare
+\texttt{Continuous} and \texttt{Discontinuous} in a public header would
+be markedly more collision-prone than the values discussed below---both
+are common identifiers in numerical codes---and the on-disk names are
+what the SIDS constrains, so the prefix costs nothing in the file
+format.  If the committee prefers strict uniformity, the alternative is
+to prefix all four values of both enumerations; the reverse, unprefixing
+\texttt{InterfaceContinuity\_t}, is not recommended.
+
 The committee should nonetheless weigh a known risk.  Existing
 unprefixed CGNS enumeration values are domain-specific nouns
 (\texttt{Vertex}, \texttt{CellCenter}, \texttt{Kilogram},
@@ -695,6 +729,136 @@ unprefixed names for consistency; the champion will adopt the
 prefixed names if the committee prefers.  Adopting them would change
 only the C and Fortran identifiers, not the on-disk strings, so it is
 a source-compatibility question rather than a file-format one.
+
+\subsection{New Enumeration: \texttt{InterfaceContinuity\_t}}
+\label{sec:continuity}
+
+\texttt{DofStorage\_t} records how DOFs are \emph{stored}.  It says
+nothing about what the stored values \emph{mean} where storage is
+duplicated, and that turns out to be the one property in this problem
+space that no existing CGNS metadata can supply.
+
+Consider two files that are identical in every respect CGNS can
+currently express---same \texttt{GridLocation\_t}, same array length,
+same CPEX~0045 basis and order, same element set, and both with
+duplicated DOFs at element interfaces:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+& \textbf{Stored} & \textbf{Duplicated values at an interface} \\
+\midrule
+CG spectral element & per element & agree, by construction \\
+Discontinuous Galerkin & per element & differ, meaningfully \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Nothing distinguishes them.  A post-processor must therefore
+assume the worst case---that every interface carries a genuine
+jump---and can never safely weld duplicated DOFs, average them, or
+reconstruct a continuous field, even when the discretization guarantees
+that doing so is exact.  An error estimator cannot separate a physical
+jump from one that is zero by construction.  The information is not
+derivable from the layout, because both files have the same layout.
+
+\begin{lstlisting}[language=C]
+typedef enum {
+  CGNS_ENUMV( InterfaceContinuityNull )        = CG_Null,
+  CGNS_ENUMV( InterfaceContinuityUserDefined ) = CG_UserDefined,
+  CGNS_ENUMV( InterfaceContinuous )            = 2,
+  CGNS_ENUMV( InterfaceDiscontinuous )         = 3
+} CGNS_ENUMT( InterfaceContinuity_t );
+
+#define NofValidInterfaceContinuity 4
+
+extern CGNSDLL const char
+    *InterfaceContinuityName[NofValidInterfaceContinuity];
+\end{lstlisting}
+
+\begin{description}[leftmargin=2em]
+\item[\texttt{InterfaceContinuityNull}] Unspecified; the default, and
+  the state of every file predating this CPEX.  A reader
+  \emph{shall not} assume continuity from its absence: the safe
+  interpretation is to preserve all duplicated values as distinct.
+
+\item[\texttt{InterfaceContinuous}] Wherever storage duplicates a DOF at
+  a shared geometric entity, all copies hold the same value, by
+  construction of the discretization.  The duplication is redundancy,
+  not information: a reader may weld, average, or interpolate across
+  element interfaces without loss.
+
+\item[\texttt{InterfaceDiscontinuous}] Duplicated values may differ, and
+  the differences are meaningful.  Readers must not average or conflate
+  them.  This is the expected value for DG, finite volume, and any
+  method whose interface jumps carry physical or numerical content.
+
+\item[\texttt{InterfaceContinuity\allowbreak UserDefined}] As with
+  \texttt{DofStorageUserDefined}, writers \emph{shall} attach a
+  \texttt{Descriptor\_t} child named
+  \texttt{"InterfaceContinuity\allowbreak Description"} to the same
+  parent.
+\end{description}
+
+\subsubsection{Relationship to \texttt{DofStorage\_t}}
+
+The two attributes are orthogonal, and each combination has a meaning:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+& \textbf{\texttt{Continuous}} & \textbf{\texttt{Discontinuous}} \\
+\midrule
+\texttt{Shared}      & CG; redundant$^{\dagger}$ & inconsistent$^{\ddagger}$ \\
+\texttt{Independent}\ & CG stored per element     & DG, FV, spectral $C^{-1}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent{\small $^{\dagger}$~Shared storage realizes continuity through
+the connectivity itself, so the annotation adds nothing derivable.  It is
+permitted for uniformity.}
+
+\noindent{\small $^{\ddagger}$~Contradictory: a single shared slot cannot
+hold two differing values.  \texttt{cgnscheck} should report an error
+(Section~\ref{sec:cgnscheck}).}
+
+The load-bearing cell is \texttt{Independent} + \texttt{Continuous}: a
+continuous field stored redundantly, which is exactly the CG
+spectral-element case above and the case that motivates this attribute.
+It is also the combination a reader most benefits from knowing, since it
+is the only one in which welding is both safe and profitable.
+
+\subsubsection{Scope of the Assertion}
+
+Three limits are deliberate, and stating them is what keeps this
+attribute narrow enough to be useful.
+
+\textbf{It records agreement, not smoothness order.}
+\texttt{InterfaceContinuous} asserts that duplicated DOFs coincide,
+which for a nodal basis means the field is at least $C^0$ across the
+interface.  It does not encode the smoothness order of the underlying
+basis: $C^k$ for $k \geq 1$, as in isogeometric analysis, is a property
+of the basis and belongs in CPEX~0045's interpolation metadata, exactly
+as Section~\ref{sec:scope} states for the storage attribute.
+
+\textbf{It is a writer's assertion, and the library does not verify it.}
+The MLL shall not compare values on write; doing so would require
+reading the field arrays and resolving the DOF correspondence, which for
+arbitrary interpolation points is not generally possible
+(Section~\ref{sec:dofstorage-interp}).  \texttt{cgnscheck} \emph{may}
+sample duplicated DOFs numerically and warn on disagreement; see
+Section~\ref{sec:cgnscheck}.  A writer that does not know shall write
+nothing, leaving \texttt{InterfaceContinuityNull}.
+
+\textbf{It is meaningful only where DOFs are duplicated.}  That is:
+under \texttt{DofStorage\_t = Independent}, under
+\texttt{GridLocation\_t = InterpolationPoints} and
+\texttt{IntegrationPoint}, and under the \texttt{Vertex} plus
+\texttt{PointList} encoding of
+Section~\ref{sec:shared-vertex-layout}.  Where no duplication occurs---a
+\texttt{CellCenter} solution, or genuinely shared vertex storage---the
+attribute is vacuous rather than wrong, and writers may omit it.
 
 \subsection{SIDS Node Definition}
 \label{sec:sids-node}
@@ -734,16 +898,21 @@ FlowSolution\_t< int CellDimension, int IndexDimension, \\
 \quad DimensionalUnits\_t DimensionalUnits ; \hfill (o) \\
 \\
 + \quad \textcolor{red}{DofStorage\_t DofStorage} ; \hfill (o) \\
++ \quad \textcolor{red}{InterfaceContinuity\_t InterfaceContinuity} ; \hfill (o)\\
 \\
 \quad List( UserDefinedData\_t UserDefinedData1 ... \\
 \qquad UserDefinedDataN ) ; \hfill (o) \\
 \quad \}
 \end{sidsnode}
 
-The \texttt{DofStorage} child is \textbf{optional}
-(\texttt{o}).  When absent, the DOF storage layout is unspecified
-(\texttt{DofStorageNull}), preserving full backward
-compatibility.
+Both new children are \textbf{optional} (\texttt{o}) and independent of
+one another.  When \texttt{DofStorage} is absent the storage layout is
+unspecified (\texttt{DofStorageNull}); when
+\texttt{InterfaceContinuity} is absent the interface behaviour is
+unspecified (\texttt{InterfaceContinuityNull}).  Either may be written
+without the other, and absence of both leaves a node
+indistinguishable from one written by a pre-CPEX-0050 library,
+preserving full backward compatibility.
 
 The same optional child node is added to \texttt{DiscreteData\_t}
 (SIDS Section~12.4), using identical structure and semantics
@@ -757,6 +926,7 @@ DiscreteData\_t< int CellDimension, int IndexDimension, \\
 \quad ... (existing children unchanged) ... \\
 \\
 + \quad \textcolor{red}{DofStorage\_t DofStorage} ; \hfill (o) \\
++ \quad \textcolor{red}{InterfaceContinuity\_t InterfaceContinuity} ; \hfill (o)\\
 \quad \}
 \end{sidsnode}
 
@@ -772,6 +942,7 @@ ZoneSubRegion\_t< int RegionCellDimension > := \\
 \quad ... (existing children unchanged) ... \\
 \\
 + \quad \textcolor{red}{DofStorage\_t DofStorage} ; \hfill (o) \\
++ \quad \textcolor{red}{InterfaceContinuity\_t InterfaceContinuity} ; \hfill (o)\\
 \quad \}
 \end{sidsnode}
 
@@ -789,6 +960,7 @@ UserDefinedData\_t := \\
 \quad ... (existing children unchanged) ... \\
 \\
 + \quad \textcolor{red}{DofStorage\_t DofStorage} ; \hfill (o) \\
++ \quad \textcolor{red}{InterfaceContinuity\_t InterfaceContinuity} ; \hfill (o)\\
 \quad \}
 \end{sidsnode}
 
@@ -927,6 +1099,21 @@ CGNSDLL int cg_dof_storage_read(
     CGNS_ENUMT(DofStorage_t) *DofStorage);
 
 /*
+ * Write / read the interface continuity of the node at the current
+ * position.  Parent labels, overwrite behaviour, and the meaning of
+ * the Null value are exactly as for cg_dof_storage_write/read: writing
+ * InterfaceContinuityNull removes an existing child, and reading a
+ * node that has none yields InterfaceContinuityNull with CG_OK.
+ *
+ * The library does not validate the assertion against the field data.
+ */
+CGNSDLL int cg_interface_continuity_write(
+    CGNS_ENUMT(InterfaceContinuity_t) InterfaceContinuity);
+
+CGNSDLL int cg_interface_continuity_read(
+    CGNS_ENUMT(InterfaceContinuity_t) *InterfaceContinuity);
+
+/*
  * Return the string name for a DofStorage_t value.
  * Matches the convention of cg_GridLocationName, cg_DataTypeName.
  * Returns NULL for out-of-range values.
@@ -965,6 +1152,13 @@ subroutine cg_dof_storage_write_f(dofStorage, ier)
 subroutine cg_dof_storage_read_f(dofStorage, ier)
   integer, intent(out) :: dofStorage
   integer, intent(out) :: ier
+\end{lstlisting}
+
+The interface-continuity pair follows identically:
+
+\begin{lstlisting}[language=Fortran]
+call cg_interface_continuity_write_f(interfaceContinuity, ier)
+call cg_interface_continuity_read_f(interfaceContinuity, ier)
 \end{lstlisting}
 
 \subsection{Internal Data Structure Changes}
@@ -1927,6 +2121,50 @@ A single \texttt{cg\_goto} serves every subsequent call: neither
 above are already determined by the grid location and the sizing rules
 (Section~\ref{sec:scope}); the node is written for uniformity, so that a
 reader can dispatch on one query across every solution node in a file.
+\subsection{Example 7: A Continuous Field Stored per Element}
+\label{ex:continuous-independent}
+
+A continuous spectral-element solver writing at
+\texttt{InterpolationPoints} duplicates its interface DOFs, so the
+storage is \texttt{Independent}; but the duplicated values agree, and a
+post-processor may weld them.  Only the second node communicates that.
+
+\begin{lstlisting}[language=C]
+int S;
+cg_sol_write(fn, B, Z, "FlowSolution",
+    CGNS_ENUMV(InterpolationPoints), &S);
+
+cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
+
+/* Storage duplicates DOFs at element interfaces ... */
+cg_dof_storage_write(CGNS_ENUMV(Independent));
+
+/* ... but the duplicates agree: the field is C0 across interfaces. */
+cg_interface_continuity_write(CGNS_ENUMV(InterfaceContinuous));
+\end{lstlisting}
+
+Replace the second call with \texttt{InterfaceDiscontinuous} and the
+file describes a DG solution instead.  Every other item of metadata is
+identical, which is precisely why the attribute is needed.  A reader
+dispatches on the pair:
+
+\begin{lstlisting}[language=C]
+CGNS_ENUMT(DofStorage_t) storage;
+CGNS_ENUMT(InterfaceContinuity_t) cont;
+cg_dof_storage_read(&storage);
+cg_interface_continuity_read(&cont);
+
+if (storage == CGNS_ENUMV(Independent) &&
+    cont    == CGNS_ENUMV(InterfaceContinuous)) {
+    /* Safe to weld duplicated DOFs into a continuous field. */
+} else {
+    /* Preserve every value distinctly: either the jumps are
+     * meaningful, or continuity was not asserted and must not
+     * be assumed. */
+}
+\end{lstlisting}
+
+%% ═════════════════════════════════════════════════════════════════════════
 \section{SIDS Impact}
 \label{sec:sids-impact}
 %% ═════════════════════════════════════════════════════════════════════════
@@ -1944,10 +2182,18 @@ reader can dispatch on one query across every solution node in a file.
   4.6--4.9.  All cross-references to those four sections require
   updating.
 
+\item \textbf{Second new enumeration type:}
+  \texttt{InterfaceContinuity\_t} is likewise added to SIDS
+  Section~4.  Alphabetically it follows \texttt{IndexRange\_t}, so with
+  \texttt{DofStorage\_t} inserted as~4.5 the two insertions together
+  give \texttt{InterfaceContinuity\_t} Section~\textbf{4.9}, and the
+  original 4.5--4.8 become 4.6--4.8 and~4.10.  The renumbering should be
+  applied once, for both additions together.
+
 \item \textbf{\texttt{FlowSolution\_t} amendment:} The
   \texttt{FlowSolution\_t} node definition (SIDS Section~7.7) is
-  amended to include an optional
-  \texttt{DofStorage\_t} child node.
+  amended to include optional \texttt{DofStorage\_t} and
+  \texttt{InterfaceContinuity\_t} child nodes.
 
 \item \textbf{\texttt{DiscreteData\_t} amendment:} The
   \texttt{DiscreteData\_t} node definition (SIDS Section~12.4) is
@@ -2015,15 +2261,36 @@ Cardinality: & 0,1 \\
 \end{tabular}
 \end{center}
 
-\noindent This is attribute-for-attribute the same as the
+\begin{center}
+\begin{tabular}{@{} >{\bfseries}l p{0.60\linewidth} @{}}
+\multicolumn{2}{@{}l}{\textbf{Node Attributes:} \texttt{InterfaceContinuity\_t}} \\
+\toprule
+Name: & \texttt{InterfaceContinuity} \\
+Label: & \texttt{InterfaceContinuity\_t} \\
+DataType: & \texttt{C1} \\
+Dimension: & 1 \\
+Dimension Values: & Length of the string value \\
+Data: & \texttt{Null}, \texttt{UserDefined}, \texttt{Continuous},
+        or \texttt{Discontinuous} \\
+Children: & None \\
+Cardinality: & 0,1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Both are attribute-for-attribute the same as the
 \texttt{GridLocation\_t} node description, apart from the name, label,
-and permitted data values.
+and permitted data values.  Note that the on-disk strings for
+\texttt{InterfaceContinuity\_t} are \texttt{Continuous} and
+\texttt{Discontinuous}: the \texttt{Interface} prefix appears in the C
+enumerators only, to keep those identifiers out of the global namespace
+(Section~\ref{sec:value-naming}).
 
 \subsection{Affected File Mapping Figures}
 
-The following File Mapping figures gain a \texttt{DofStorage} child
-box, drawn in the same style as the existing \texttt{GridLocation}
-child:
+The following File Mapping figures gain a \texttt{DofStorage} child box
+and an \texttt{InterfaceContinuity} child box, both drawn in the same
+style as the existing \texttt{GridLocation} child:
 
 \begin{itemize}[leftmargin=2em]
 \item \texttt{FlowSolution\_t}
@@ -2042,6 +2309,11 @@ what the absence \emph{means}: an absent \texttt{GridLocation} implies
 the concrete value \texttt{Vertex}, whereas an absent
 \texttt{DofStorage} implies only ``unspecified''
 (Section~\ref{sec:legacy-inference}).
+
+\texttt{InterfaceContinuity} follows the identical convention: written
+only when not \texttt{InterfaceContinuityNull}, and absence meaning
+``unspecified'' rather than any concrete value.  In particular, absence
+must not be read as \texttt{Continuous}.
 
 When \texttt{DofStorageUserDefined} is written, the accompanying
 description node is an ordinary \texttt{Descriptor\_t} and follows
@@ -2140,6 +2412,24 @@ existing CGNS conventions and SIDS precedent.
   \texttt{GridLocation\_t} value.}  See
   Section~\ref{sec:why-new-node}.
 
+\item \textbf{Two separate attributes rather than one combined
+  enumeration.}  A single enumeration could in principle enumerate the
+  meaningful pairs---\texttt{SharedContinuous},
+  \texttt{IndependentContinuous}, \texttt{IndependentDiscontinuous}.
+  Rejected for three reasons.  The two properties answer different
+  questions, are supplied by different parts of a solver, and are known
+  with different confidence: a writer almost always knows its storage
+  layout, while continuity is an assertion about the discretization that
+  it may not be in a position to make.  Combining them would force a
+  writer that knows only the layout to either overstate its knowledge or
+  say nothing at all.  A combined enumeration would also grow
+  multiplicatively if either property later gains a value, and it would
+  make the common case---recording storage alone, as every example
+  before Example~\ref{ex:continuous-independent} does---depend on a
+  decision about continuity that is irrelevant to it.  Orthogonal
+  properties are recorded in orthogonal nodes, which is also how CGNS
+  treats \texttt{GridLocation\_t} and \texttt{DataClass\_t}.
+
 \end{enumerate}
 
 \subsection{Rejected Alternatives}
@@ -2204,6 +2494,31 @@ a file; the corresponding check is on the string.
   error via \texttt{cgi\_DofStorage} for files at or below the
   library's own version, and as a warning (degrading to
   \texttt{UserDefined}) for files written by a newer library.
+
+\item[Error:] \texttt{InterfaceContinuity} node data is not one of
+  \texttt{"Null"}, \texttt{"UserDefined"}, \texttt{"Continuous"}, or
+  \texttt{"Discontinuous"}, with the same
+  newer-library degradation as above.
+
+\item[Error:] \texttt{DofStorage\_t = Shared} together with
+  \texttt{InterfaceContinuity\_t = Discontinuous} --- contradictory,
+  since a single shared storage slot cannot hold two differing values
+  (Section~\ref{sec:continuity}).
+
+\item[Warning:] \texttt{InterfaceContinuity} present on a node where no
+  DOF duplication can occur---\texttt{GridLocation\_t = CellCenter}, or
+  \texttt{Vertex} with no \texttt{PointList}---where the assertion is
+  vacuous rather than wrong (Section~\ref{sec:continuity}).
+
+\item[Warning, optional and off by default:] where the field arrays and
+  the DOF correspondence are both available, \texttt{cgnscheck} may
+  sample duplicated DOFs and warn when
+  \texttt{InterfaceContinuity\_t = Continuous} but the sampled copies
+  differ by more than a tolerance.  This check is necessarily partial:
+  for arbitrary interpolation points the correspondence cannot be
+  established at all (Section~\ref{sec:dofstorage-interp}), so a clean
+  result is not a guarantee and a failure should be reported as a
+  suspected inconsistency rather than a definite one.
 
 \item[Error:] \texttt{DofStorage\_t = Independent} with
   \texttt{GridLocation\_t = Vertex} and \emph{no}
@@ -2318,21 +2633,35 @@ text cannot describe the same data in contradictory terms.  Neither
 proposal should be understood as the faster route to the capability.
 
 The library version constant is incremented, and the value at which
-\texttt{DofStorage\_t} first appears shall be recorded in the SIDS text
+\texttt{DofStorage\_t} and \texttt{InterfaceContinuity\_t} first appear
+shall be recorded in the SIDS text
 so that implementers can determine support from the file version
 alone.  The forward-compatibility path described in
-Section~\ref{sec:compat} depends on this: \texttt{cgi\_DofStorage}
-degrades unrecognized strings to \texttt{UserDefined} only when
-\texttt{cg->version > CGNSLibVersion}.
+Section~\ref{sec:compat} depends on this: \texttt{cgi\_DofStorage} and
+\texttt{cgi\_InterfaceContinuity} degrade unrecognized strings to
+\texttt{UserDefined} only when \texttt{cg->version > CGNSLibVersion}.
+Because both attributes are introduced in the same release, a single
+version threshold serves both.
 
 \subsection{Test Plan}
 
 \begin{enumerate}[leftmargin=2em]
-\item \textbf{Round trip, all parents.}  For each of
+\item \textbf{Round trip, all parents, both attributes.}  For each of
   \texttt{FlowSolution\_t}, \texttt{DiscreteData\_t},
   \texttt{ZoneSubRegion\_t}, and \texttt{UserDefinedData\_t}: write
   each of \texttt{Shared}, \texttt{Independent}, and
   \texttt{DofStorageUserDefined}; close; reopen; read back and compare.
+  Repeat for \texttt{InterfaceContinuous},
+  \texttt{InterfaceDiscontinuous}, and
+  \texttt{InterfaceContinuityUserDefined}.
+
+\item \textbf{Independence of the two attributes.}  Write each of the
+  nine combinations of the two enumerations (including
+  \texttt{Null} for each) on one node; verify that reading either is
+  unaffected by the other, that writing one does not create or remove
+  the other, and that writing \texttt{Null} to one leaves the other
+  intact.  This is the regression test for the shared address-helper
+  mechanism.
 
 \item \textbf{Absent node.}  Read from a node with no
   \texttt{DofStorage} child and assert \texttt{CG\_OK} with
@@ -2394,7 +2723,7 @@ degrades unrecognized strings to \texttt{UserDefined} only when
 %% ═════════════════════════════════════════════════════════════════════════
 
 \begin{center}
-\begin{longtable}{l p{0.52\linewidth}}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.42\linewidth} >{\raggedright\arraybackslash}p{0.50\linewidth}}
 \toprule
 \textbf{Symbol} & \textbf{Description} \\
 \midrule
@@ -2409,17 +2738,33 @@ degrades unrecognized strings to \texttt{UserDefined} only when
 \texttt{cg\_dof\_storage\_write\_f} & Fortran binding for \texttt{cg\_dof\_storage\_write}. \\
 \texttt{cg\_dof\_storage\_read\_f} & Fortran binding for \texttt{cg\_dof\_storage\_read}. \\
 \addlinespace
+\texttt{InterfaceContinuity\_t} & New enumeration type: \texttt{InterfaceContinuityNull}, \texttt{InterfaceContinuityUserDefined}, \texttt{InterfaceContinuous}, \texttt{InterfaceDiscontinuous}.  The on-disk strings are \texttt{Continuous} and \texttt{Discontinuous}; the prefix is carried by the C enumerators only. \\
+\texttt{InterfaceContinuityName} & String table for the enumeration values. \\
+\texttt{NofValidInterface\allowbreak Continuity} & Count of valid enumeration values (4). \\
+\texttt{cg\_InterfaceContinuity\allowbreak Name} & C: return the string name for an \texttt{InterfaceContinuity\_t} value. \\
+\texttt{cg\_interface\_continuity\_\allowbreak write} & C: write the interface continuity of the node at the current position. \\
+\texttt{cg\_interface\_continuity\_\allowbreak read} & C: read the interface continuity of the node at the current position. \\
+\texttt{cg\_interface\_continuity\_\allowbreak write\_f} & Fortran binding. \\
+\texttt{cg\_interface\_continuity\_\allowbreak read\_f} & Fortran binding. \\
+\addlinespace
 \multicolumn{2}{@{}l}{\textit{Internal (\texttt{cgns\_header.h})}} \\
 \texttt{cgi\_dof\_storage\_address} & Resolve the current position to the parent's \texttt{dof\_storage} field; delete an existing child on modify. \\
 \texttt{cgi\_DofStorage} & Map a \texttt{DofStorage} string to the enumeration value. \\
 \texttt{dof\_storage} & New field in \texttt{cgns\_sol}, \texttt{cgns\_discrete}, \texttt{cgns\_subreg}, \texttt{cgns\_user\_data}. \\
+\texttt{cgi\_interface\_continuity\_\allowbreak address} & As \texttt{cgi\_dof\_storage\_address}, for the second attribute. \\
+\texttt{cgi\_InterfaceContinuity} & Map an \texttt{InterfaceContinuity} string to the enumeration value. \\
+\texttt{interface\_continuity} & Second new field in the same four structures. \\
 \bottomrule
 \end{longtable}
 \end{center}
 
-\noindent Four public functions cover all four parent node types.  No
+\noindent Eight public functions---two pairs plus their Fortran
+bindings---cover both attributes on all four parent node types.  No
 per-parent variants and no \texttt{cgp\_*} variants are required; see
-Sections~\ref{sec:mll} and~\ref{sec:compat}.
+Sections~\ref{sec:mll} and~\ref{sec:compat}.  The second attribute costs
+one additional address helper, one additional string mapper, and one
+additional field per structure, because it reuses the mechanism the first
+one establishes.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{References}
