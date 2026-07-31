@@ -123,7 +123,8 @@ Organization     & The HDF Group \\
 E-mail           & \href{mailto:brtnfld@hdfgroup.org}{brtnfld@hdfgroup.org} \\
 GitHub Issue     & to be assigned by the CPEX editors \\
 Reference Impl.  & pending (see Section~\ref{sec:refimpl}) \\
-Target Release   & pending (see Section~\ref{sec:refimpl}) \\
+Target Release   & CGNS 5.0, jointly with CPEX~0045
+                   (see Section~\ref{sec:refimpl}) \\
 Date First Posted & April 21, 2026 \\
 Date of Last Revision & July 29, 2026 \\
 Prior Registry Entry & Listed while in draft as ``Support Solution
@@ -270,14 +271,38 @@ how narrow the proposal should be:
   vertices.  It is a request for one designator value, not for a
   general classification of DOF storage.
 \item The constituency is third-party \emph{readers}, not solver
-  authors.  This matters
-  when weighing this proposal against the alternative of requiring
-  CPEX~0045's \texttt{InterpolationPoints}: a reader that must
-  implement \texttt{Family\_t}-level
-  \texttt{SolutionInterpolation\_t} machinery in order to interpret a
-  first-order DG field bears a cost out of proportion to the data,
-  and CPEX~0045 is itself not yet part of the standard.
+  authors.  This is what distinguishes this proposal from the
+  alternative of requiring CPEX~0045's \texttt{InterpolationPoints}: a
+  reader that must implement \texttt{Family\_t}-level
+  \texttt{SolutionInterpolation\_t} lookup, basis evaluation, and
+  control-point handling in order to interpret a first-order DG field
+  bears a cost out of proportion to the data.  Where the DOF positions
+  simply \emph{are} the mesh vertices, the difference is between
+  reading one additional scalar node and implementing an interpolation
+  framework.
+
+  No claim of earlier availability is intended or implied.  This
+  proposal and CPEX~0045 are being developed together and target the
+  same release, so neither is the faster route to the capability; the
+  argument for this one rests on reader-side implementation cost alone.
+  Joint development is itself the reason the two can be relied upon to
+  interlock: shared vocabulary, a single pass through the MLL and
+  \texttt{cgnscheck}, and no possibility of the two describing the same
+  data in contradictory terms.
 \end{itemize}
+
+\paragraph{A second, independent instance of the same workaround.}
+The pattern is not specific to CGNS.  Reviewers of this proposal report
+that at least one widely used commercial post-processing format forces
+the identical workaround: although it acquired high-order support, that
+support remains restricted to nodal---and therefore continuous---values,
+so discontinuous fields must be emitted either by duplicating geometry
+or by writing each element as its own topologically independent region.
+The same limitation is reported to have been a principal motivation for
+CPEX~0045.  Two unrelated formats exhibiting the same defect indicates
+that this is a general gap in how solution data is modelled, rather
+than a CGNS-specific oversight, and it means CPEX~0045 and this
+proposal are two approaches to one problem rather than competitors.
 
 \subsection{Inadequacy of Existing CGNS Constructs}
 
@@ -368,6 +393,27 @@ higher-order interpolation infrastructure.
   vector-conforming space orientation
   (Sections~\ref{sec:ptlist-restrictions} and~\ref{sec:hdiv-hcurl}).
 \end{itemize}
+
+\paragraph{An acknowledged redundancy.}  For discontinuous Galerkin data
+with $p \leq 4$ on a Lagrange basis there will be two conforming ways to
+express the same field: the \texttt{Vertex} encoding defined here, and
+CPEX~0045's \texttt{InterpolationPoints}.  This is stated plainly
+because the cost is borne asymmetrically---writers gain a choice, while
+readers wishing to interpret all conforming files must support both.
+Tolerating alternative encodings of similar data is long-standing CGNS
+practice, and it is what makes the standard easy to write against, but
+it is a genuine burden on reader implementors and should not be
+presented as free.
+
+Two things limit the cost.  First, \textbf{CPEX~0045 is the recommended
+route wherever it is available}: it needs no redundant index list, it
+extends to any order, and it is the better mechanism where the DOF
+positions are not the mesh vertices.  The encoding here is offered as
+the lower-adoption-cost path, not the preferred one.  Second, a reader
+that implements only CPEX~0045 is never \emph{wrong}---it is simply
+unable to read files that chose the other encoding, and can say so
+precisely, because the \texttt{DofStorage} node makes that choice
+explicit rather than leaving it to be inferred.
 
 \subsection{Prior Art: The DOF-Map Concept in ASCI-DMF / SAF}
 \label{sec:prior-art}
@@ -2259,6 +2305,17 @@ The reference implementation comprises:
 \end{enumerate}
 
 \subsection{Versioning}
+
+\textbf{Target release: CGNS 5.0, jointly with CPEX~0045.}  The two
+proposals are being developed together for the same release.  This is a
+deliberate choice rather than a scheduling coincidence: because the
+\texttt{Vertex} encoding defined here and CPEX~0045's
+\texttt{InterpolationPoints} can express overlapping cases
+(Section~\ref{sec:scope}), implementing them in one pass is what
+guarantees they use consistent vocabulary, that \texttt{cgnscheck}
+validates both against the same model of DOF storage, and that the SIDS
+text cannot describe the same data in contradictory terms.  Neither
+proposal should be understood as the faster route to the capability.
 
 The library version constant is incremented, and the value at which
 \texttt{DofStorage\_t} first appears shall be recorded in the SIDS text

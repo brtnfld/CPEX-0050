@@ -1,11 +1,11 @@
 # CPEX 0050 — Response to Reviewer (Overleaf round)
 
-> **Status (2026-07-29):** all six comments logged and assessed; nine unconditional corrections
-> applied; scope **narrowed** with champion approval; vocabulary swept and the source document
-> renamed. Build clean via `make`: 47 pp., no undefined references. Provenance **resolved** — the
-> requirement came from private email, is real, and is evidenced by a production workaround.
-> Disposition: **narrow, do not withdraw.** The reply is complete and unblocked; the only external
-> action outstanding is the CPEX registry entry.
+> **Status (2026-07-29):** all six comments assessed and conceded on the merits; nine unconditional
+> corrections applied; scope **narrowed**; examples cut from twelve to six; source renamed and version
+> reset to 1. Build clean via `make`: **42 pp.**, no undefined references. Provenance **resolved** —
+> private email, real, evidenced by a production workaround. Disposition: **narrow, not withdraw.**
+> Document and registry entry are **published** (`CPEX-0050` `main`, `cgns.github.io` `develop`).
+> The reply below is verified against the published PDF and ready to send.
 
 **Document under review**: `CPEX-0050-dof-storage.tex` — renamed from
 `CPEX-0050-solution-representation.tex`; builds `CPEX-0050-dof-storage.pdf`
@@ -13,6 +13,11 @@
 > ⚠️ **Line anchors below predate the narrowing edits** (they refer to v1.1 as reviewed, before ~150
 > lines were inserted). Locate passages by section title rather than by line number. Section titles
 > and file paths are current.
+> **Note on tone.** This is a working analysis file. Verdicts are tracked in blunt shorthand
+> ("concede", "does not survive") to keep the argument status unambiguous — that is a device for
+> triage, not a characterisation of the reviewer, whose comments were brief, accurate, and offered
+> collegially. Reviewers may well read this file; it should not read as adversarial.
+
 **Review channel**: Overleaf inline comments + summary e-mail
 **Date opened**: 2026-07-29
 **Prior round**: `CPEX-0050-review-findings.md` (v1.0 internal review, all IDs addressed in v1.1)
@@ -223,8 +228,8 @@ the "two values are necessary" argument.
 
 ## R4 — Sub-entity mapping for user-defined interpolation points
 
-**There is no answer, and this is the most serious comment in the round.** R1–R3 attacked the
-*motivation*; R4 attacks the *design*. Verified directly against
+**There is no answer, and this is the most consequential comment in the round.** R1–R3 concern the
+*motivation*; R4 concerns the *design*. Verified directly against
 `CPEX-0045/CPEX-0045-high-order-interpolation.tex`:
 
 **1. `SolutionInterpolation_t` carries no sub-entity ordering guarantee.** 0045 states the
@@ -252,7 +257,7 @@ it is undefined.
 
 ### Consequence: `Shared` never does any work
 
-This closes a pincer around the `Shared` value:
+Combined with R1–R3, this leaves `Shared` without a role in any regime:
 
 | Regime | Status of `Shared` |
 |---|---|
@@ -348,7 +353,7 @@ Fix by naming both cases in DD3 and stating plainly that neither is MLL-enforced
 
 ### R6(b) — "Sharing is only really possible for vertex-based HO interpolants"
 
-Concede. This is the pincer from R4 stated in one line, and it is now the reviewer's own conclusion
+Concede. This is the R4 conclusion stated in one line, and it is now the reviewer's own formulation
 rather than ours. It should be adopted verbatim as the scoping premise of any redraft.
 
 ### R6(c) — "The DofStorage is purely informative … the field itself can correspond to continuous data with shared DoF, even if the storage is duplicated in a discontinuous representation (also for continuous FE)"
@@ -399,7 +404,7 @@ the reviewer means:
 1. **"Informative and therefore valuable"** — it carries information no other node carries. Then
    there is a real gap and a defensible v2.
 2. **"Informative and therefore droppable"** — not machine-actionable, so it does not earn a SIDS
-   node. Then this is the final nail.
+   node. Then the honest outcome is to leave it out.
 
 **Ask him directly.** This is the single highest-value question in the round and it cannot be
 inferred from the comment.
@@ -508,119 +513,124 @@ These were wrong on their own terms, independent of how the CPEX is disposed of.
 
 ---
 
-## Draft Reply to Reviewer
+## R7 — Reviewer's pre-emptive reply (received before ours was sent)
 
-> Ready to send. One insert marked **[NAMED CODE]** — fill in or delete per the answer to Q2 below.
+The reviewer read the Overleaf link (now broken by the rename — it opens an empty editor) and then
+this working file, and replied ahead of us. Outcome: **both open questions resolved in the
+proposal's favour, and an explicit green light for the narrowed revision.**
 
-Thank you — these are well taken, and I accept the central point. Rather than defend v1.1 as
-written, let me say plainly what I think survives and what does not.
+| Question | Resolution |
+|---|---|
+| **Q1** — "purely informative": valuable or droppable? | Initially meant *droppable*. **Persuaded by the post-processing argument** (generic tools offering both continuous and discontinuous paths) and now accepts it "could be worth recording as an optional piece of valuable information." |
+| **Q2** — is the need real? | "Definitely." He is a DG practitioner and knows "the pain of writing duplicate geometry in order to faithfully represent discontinuous data" first-hand. |
 
-**On the core objection.** You are right that CGNS is not ambiguous today. The premise v1.1 rests
-on — that a reader cannot determine DOF layout without fragile inference from data dimensions — is
-false for conforming files: `GridLocation_t` together with the SIDS `DataSize` formula fixes the
-layout in every legal case. The document contains its own refutation, which I had not noticed: the
-legacy-interpretation table is a complete deterministic decision table, and it states that at
-`Vertex` "the SIDS `DataSize` formula admitted no other layout at this size." Design Decision 1
-then makes your argument verbatim in order to exclude `BCData_t`. So the motivation has to be
-rebuilt on *expressiveness* — element-local DOFs cannot be **written** at a shared-entity grid
-location — not on ambiguity. Miller's "hopelessly confused" observation supports the former and I
-was using it for the latter; that paragraph will be rewritten.
+**Corroborating evidence he volunteered.** The problem is not CGNS-specific: their direct Tecplot
+output suffers identically, since even post-HO-support that format is restricted to nodal values and
+therefore continuous data, and the only workaround is duplicating geometry or emitting each element
+as its own topologically independent region. He notes this was the original motivation for CPEX 0045.
+This independently confirms §2.2 from a second source — worth citing generically (no vendor or
+personal names, per the champion's instruction).
 
-**Point by point.**
+**His verdict, verbatim:** *"please go ahead and propose a more narrow and focused revision of the
+CPEX with a clearer use case and corresponding motivation, irrespective of 45 potentially covering
+the same need."*
 
-1. *Order beyond 4.* Agreed, and structurally so: `Shared` is only expressible at `Vertex`, which
-   caps at the predefined types, and 0045's per-element concatenation makes sharing inexpressible by
-   construction. §9.3 already concedes this; the concession should be in §2, not buried.
+**On redundancy**, he raises and then answers his own objection: two ways to express the same data
+for DG, p ≤ 4, Lagrange basis is the result. He observes that tolerating multiple encodings of the
+same thing is "a tradition or even 'the spirit' of how CGNS works" — easy to write, hard to read —
+and that while he would personally prefer a single normative form, "starting now would be a bad
+time." Accepted, not waived: it is a real cost he is choosing to bear.
 
-2. *Grid location already carries the meaning.* Agreed. Working through the cases, the tag is
-   informative in exactly one configuration — `Vertex` with a `PointList`. Everywhere else it is
-   confirmatory, meaningless, or already invalid.
+### The one question he puts back to us
 
-3. *HDG traces.* Agreed on both halves, and the bullet you commented on is simply wrong: standard
-   HDG trace spaces are face-wise polynomials with no inter-face continuity, so "globally shared" is
-   not a description of a variant but a misstatement of the mainstream method. On your narrow
-   question: §9.3 does define the reference entities as the two adjacent *volume* elements, under
-   which your field is still `Shared` — but the enum definition itself never states a reference
-   frame, and under its general wording your reading is the correct one. That is a real defect and I
-   will fix it by hoisting the rule into the normative definition. You are also right that both
-   flavors are expressible under 0045 today, so HDG can no longer carry the "two values are
-   necessary" argument.
+He assumed CPEX 0045's implementation is far enough advanced that **0050 functionality could not ship
+before 0045**, which is why he saw no acceleration argument. Explicitly:
 
-4. *User-defined interpolation points.* There is no answer, and this is the comment that changes my
-   own view of the proposal. 0045 states the principal-vertices-first assumption only for
-   `ElementInterpolation_t`; `SolutionInterpolation_t` has no equivalent clause,
-   `LagrangeControlPointDistribution` is explicitly stated to carry no information a reader needs to
-   interpret the points, and under the monomial bases the DOFs have no geometric support at all, so
-   there is no sub-entity to share. Even for `ParametricLagrange` with user points, sharing would
-   need a tolerance-based predicate for "lies on a boundary sub-entity" plus an orientation-aware
-   cross-element permutation, neither of which is defined. So `Shared` under `InterpolationPoints`
-   is not merely redundant, it is unactionable. Combined with the above, `Shared` is never
-   load-bearing anywhere: it is either realized by the `Elements_t` connectivity or it cannot be
-   acted on. The two-value classification cannot be defended on semantic grounds.
+> "If you judge this differently, then this would be a strong argument to push 50 along."
 
-5. *Weak BCs.* Correct; I am deleting that inference. Weak imposition is not DG-specific — Nitsche
-   and penalty methods in CG FEM and IGA are standard — and BC data layout does not follow from the
-   parent solution's DOF storage. The exclusion of `BCData_t` stands on the sizing argument alone.
-   I will also note that the case I hedged for is already covered by 0047, which permits
-   `IntegrationPoint` under `BC_t`/`BCDataSet_t` with `ItgPointsStartOffset` fixing the layout.
+**This is now the strongest remaining argument available, and it depends on a judgement only the
+champion can make** — the relative implementation and release readiness of 0045 versus 0050. It needs
+answering in the reply.
 
-6. *`InterpolationPoints` + `Shared`.* Agreed, and you have found an internal inconsistency:
-   Design Decision 3 names only `CellCenter` + `Shared` as contradictory and says the library will
-   not reject such combinations, while §9.3 calls `InterpolationPoints` + `Shared` outright invalid.
-   Both will be named, with the enforcement split stated explicitly.
+### Note on how our analysis read to him
 
-**What I think is left.** One capability: element-local DOFs at `GridLocation_t = Vertex` on the
-predefined element types, keeping the standard connectivity and without adopting 0045's
-`Family_t`-level `SolutionInterpolation_t` machinery. I should be honest that this is an
-adoption-cost argument, not a capability gap — 0045 can already express DG at any order, including
-p ≥ 1 on a linear mesh. If that is worth standardizing it needs a single-valued marker plus the
-`PointList` ordering rule, not a two-value classification of DOF storage. That is a substantially
-smaller proposal than v1.1.
+He inferred from this file that his feedback had been taken as destructive, and apologised for it.
+The inference was reasonable given the framing, and the framing was wrong: brief, accurate comments
+offered collegially were being tracked in the vocabulary of an adversarial contest. The combative
+metaphors have been removed and a note on tone added at the head of this file. Worth remembering that
+working notes in a public repository will be read by the people they discuss.
 
-**Two questions, which between them decide the disposition.**
+---
 
-*First, on "purely informative" — do you mean informative and therefore worth recording, or
-informative and therefore not worth a SIDS node?* I ask because your sentence identifies the one
-thing I now believe is genuinely not expressible in CGNS: whether duplicated DOFs agree by
-construction. A CG spectral-element solution written at `InterpolationPoints` and a DG solution
-written at `InterpolationPoints` are indistinguishable — same grid location, same sizing, same
-basis, same element set — yet one field is continuous and the other is not. A post-processor must
-therefore assume jumps everywhere and can never safely weld or reconstruct; an error estimator
-cannot separate a physical jump from a numerically-zero one. That is orthogonal to storage layout
-and, unlike storage layout, not derivable. If you think it is worth recording, there is a narrow
-proposal there — and, with some irony, it is what v1.0's name was reaching for before it was
-renamed for being misleading. If you think it is not machine-actionable enough to earn a node, then
-I would rather withdraw this CPEX and let 0045 and 0047 carry the ground they already cover.
+## Final Reply to Reviewer — revised after R7
 
-*Second — and this is where I do want to hold ground* — the case that remains is not hypothetical.
-The requirement was raised by third-party reader implementors, and their report is that there is at
-least one DG solver in production which writes **duplicate grid coordinates** for geometrically
-shared nodes, so that the grid and solution extents match and existing readers will accept the file.
-What they asked for is a designator for exactly one situation: shared nodes in the grid, independent
-solution values at those nodes, with the shared grid retained so that mesh walking and stream
-tracing still work.
+> The previously drafted reply is superseded: it asked two questions he has now answered and adopted a
+> defensive posture that his response makes inappropriate. This version is shorter, answers his
+> points, and puts the one open question — implementation timing — back to him.
 
-That is worse than the `PointList` redundancy you would rightly object to: duplicating coordinates
-inflates `GridCoordinates_t` by the average vertex valence and destroys the connectivity outright. I
-have added this as a new §2.2 and re-argued the storage-overhead discussion against it.
+---
 
-I want to be precise about what this does and does not establish, because it does not rescue my
-original framing. On capability alone you are right that CPEX 0045's `InterpolationPoints` also
-satisfies this requirement — the grid is untouched either way, and I have removed the claim that the
-`Vertex` encoding is the only route. What the narrow proposal offers instead is a much smaller
-reader-side burden for the case where the DOF positions simply *are* the mesh vertices: no
-`Family_t`-level `SolutionInterpolation_t` lookup, no basis evaluation, no control-point machinery.
-For first-order DG that is the difference between reading one extra scalar node and implementing an
-interpolation framework — and it is third-party readers, not solver authors, who are asking. CPEX
-0045 is also not yet part of the standard, so "0045 covers it" is at present a statement about the
-target state rather than about what an implementor can rely on today.
+Thank you — this is a generous and genuinely useful reply, and it arrives before mine went out, which
+saves a round.
 
-So my proposed disposition is to narrow rather than withdraw: keep the `Vertex` plus `PointList`
-encoding and its ordering rule, drop the FV, HDG, FSI and CHT motivations, stop claiming the tag
-resolves an ambiguity, and be explicit that `Independent` is the only load-bearing value while
-`Shared` is retained for self-description alone. If you would still rather see this folded into 0045
-as an alternative encoding there, I am open to that — but I do not think the underlying request
-should be left unaddressed, since the current workaround in the field is materially harmful.
+**On tone, since you raised it: no apology needed, and the inference was mine to correct rather than
+yours.** Your comments were brief because they were precise; each one landed on something real, and
+two of them changed the proposal structurally rather than cosmetically. The working notes you found
+track argument status in deliberately blunt shorthand — "concede", "does not survive" — which is a
+triage device, and reading them cold it is entirely fair that they came across as treating your
+feedback as an attack. That is on the framing, not on you. I have adjusted it. Please do keep
+reviewing in exactly the register you used; half sentences that identify the right defect are worth
+considerably more than length. And no need to apologise for timing either — the delay produced a
+better document than a fast confirmation would have.
+
+**On "purely informative."** Thank you for reconsidering, and for saying so explicitly. I will treat
+interface consistency — whether duplicated DOF values agree by construction — as optional recorded
+information rather than something to leave out. It is currently written up as an explicit non-goal so
+that the storage question stays separable; I will propose it as a distinct, optional attribute so
+that neither depends on the other.
+
+**On the real need.** Your Tecplot observation is the most useful thing in your reply. That the same
+duplicate-geometry workaround is forced by a second, unrelated format — and that HO support there is
+still restricted to nodal, therefore continuous, data — establishes that this is a property of how
+tools model solution data generally, not a CGNS defect. I will add it to the evidence section
+alongside the third-party reader report, generically attributed. It also reframes the history usefully:
+if this was the original motivation for 0045, then 0045 and 0050 are two attempts at the same problem
+rather than competitors.
+
+**On redundancy.** I think your framing is the honest one and I would rather state it in the document
+than let a future reader discover it: for DG with p ≤ 4 on a Lagrange basis there will be two
+conforming encodings, and that is a real cost borne by readers, not writers. I will say so plainly in
+the scope section, recommend the 0045 route wherever it is available, and position the `Vertex`
+encoding as the lower-adoption-cost path rather than the preferred one. That way a reader implementing
+only 0045 is never wrong, merely unable to read files that chose the other path.
+
+**On timing — your question back to me.** You judged it correctly, and I am not going to claim an
+advantage that does not exist. I am developing both proposals together for CGNS 5.0, so 0050 is not
+the faster route to the capability and the acceleration argument is withdrawn. The case for it rests
+on what you already granted: reader-side adoption cost for the subset where the DOF positions simply
+are the mesh vertices.
+
+I would put one thing in the other column, though. Joint development is the reason the redundancy you
+identified is manageable rather than merely tolerated. Because both go through the MLL and
+`cgnscheck` in the same pass, they will share vocabulary, be validated against one model of DOF
+storage, and cannot end up describing the same data in contradictory terms — which is the usual way
+two overlapping CGNS encodings become painful for readers. The target release is now stated in the
+document, jointly with 0045, along with the reasoning.
+
+**Where that leaves the document.** The revision you asked for is essentially done. Scope is narrowed
+to element-local DOFs at `GridLocation_t = Vertex` with the shared-vertex grid retained; the
+finite-volume, HDG, FSI and conjugate-heat-transfer motivations are gone along with their examples;
+every ambiguity claim is removed, since you were right that `GridLocation_t` plus the SIDS `DataSize`
+rules already determine the layout in every legal encoding today; and `Independent` is identified as
+the only load-bearing value, with `Shared` retained for self-description alone. Twelve examples became
+six and the document is shorter. Specific corrections from your comments: the HDG trace bullet no
+longer claims those DOFs are globally shared, the reference entity set is now stated in the normative
+definition rather than only in the 0045 interaction section, the weak-BC inference is deleted, the
+`CellCenter`/`InterpolationPoints` inconsistency between Design Decision 3 and §4.2 is reconciled, and
+the orthogonality table no longer claims a hierarchical-modal combination that 0045 cannot express.
+
+One practical thing: renaming the source to `CPEX-0050-dof-storage.tex` is what broke your Overleaf
+link. I will re-share the project so it points at the current file — apologies for the dead end.
 
 ---
 
