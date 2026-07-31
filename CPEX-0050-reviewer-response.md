@@ -664,6 +664,49 @@ link. I will re-share the project so it points at the current file — apologies
 
 ---
 
+## Final Accuracy Review (2026-07-31)
+
+Verified against `/Users/brtnfld/packages/CGNS` (`CGNS_DOTVERS 5.00`, the 5.0 development tree),
+`cgns.github.io` SIDS + FMM sources, and `CPEX-0045-high-order-interpolation.tex`.
+
+### Defects found and fixed
+
+| # | Severity | Finding |
+|---|---|---|
+| 1 | **Factual, load-bearing** | Writing Conventions claimed the node follows `GridLocation`, "which is likewise omitted when it would carry its default." False: `cg_gridlocation_write` *always* creates its node, and `cgi_check_location` outright **rejects** `GridLocationNull` under `FlowSolution_t`/`DiscreteData_t`/`BC_t`. Further, **no** `cg_*_write` in the MLL deletes a child when passed its `Null` value — our Null-removes-child rule is a new convention. Now stated as deliberate, with the reasoning, instead of borrowing false precedent. |
+| 2 | **Factual** | 21 compound references read `DofStorage_t = DofStorageShared` after the prefix sweep — redundant, and two caused margin overflow. Simplified to the value alone, which the prefix makes unambiguous. |
+| 3 | **Factual** | Two enum-value references escaped the prefix sweep entirely: 23 compound `\texttt{DofStorage\_t = Shared}` forms and the CPEX-0045 orthogonality table header. Both would have shipped inconsistent with the enum. |
+| 4 | **Coordination** | CPEX 0045 inserts SIDS 12.10/12.11, pushing `UserDefinedData_t` from 12.10 to **12.12** and `Gravity_t` to 12.13. Our four citations of 12.10 are right today and wrong on joint 5.0 delivery. Added a renumbering paragraph; verified Chapters 4 and 7 are *not* affected (0045 generalises 7.3/7.4/7.7/7.8 in place and adds nothing to Chapter 4). |
+| 5 | **Compile error** | Example 6 used `CGIO_MAX_NAME_LENGTH`, which is defined in `cgns_io.h` — a header `cgnslib.h` does **not** include. Changed to `char basename[33]`, matching CGNS's own convention in `cgnslib.c`. |
+| 6 | **Imprecise** | SIDS Chapter 4 described as "ordered alphabetically." It is not: `DimensionalUnits_t` (4.3) precedes `DimensionalExponents_t` (4.4). The 4.5 and 4.9 insertion points remain correct; the exception is now named. |
+| 7 | **Internal tension** | `Null` meant "absence of node" in Writing Conventions, yet the filemap `Data` row and `cgnscheck` rules both list `Null` as a value. Reconciled: `"Null"` is never *written* by this API but **must be accepted on read**, and stays in the name table for positional correspondence — verified as the convention in `GridLocationName`/`DataClassName`. |
+| 8 | **Text corruption** | An earlier edit left "This is the HDG trace case the trace case." |
+| 9 | **Stale after expansion** | Running head still read "DOF Storage Type"; Deliverables, Internal Data Structure Changes, Lookup Table, Address Resolution, Tree Parser and Backward Compatibility all covered only the first attribute; the Examples framing omitted Example 7; function counts (six vs. eight) used different bases without saying so; `Sections~8 and~9` were hardcoded. All corrected. |
+| 10 | **Unstated dependency** | Examples use `CGNS_ENUMV(InterpolationPoints)`, which does not exist in the 5.0 tree — it arrives with 0045. Now stated explicitly against the joint target. |
+
+### Verified correct — no change needed
+
+- Address-helper pattern: `cgi_location_address` uses `ADDRESS4SINGLE_ALLOC`, then `cgi_get_nodes(parent_id, label, ...)` + `cgi_delete_node` on `MODIFY`+`WRITE`. Our `cgi_dof_storage_address` spec matches.
+- `INVALID_ENUM(E,EMAX)` exists in `cgns_header.h:119` and is used by `cg_gridlocation_write` exactly as we claim.
+- `cgi_GridLocation`'s forward-compatibility degradation (`cg->version > CGNSLibVersion` → `UserDefined` + warning) matches our `cgi_DofStorage` spec verbatim.
+- `grep -c GridLocation pcgnslib.c` = **0** — the parallel-MLL claim holds.
+- SIDS **7.7** `FlowSolution_t`, **7.9** `ZoneSubRegion_t`, **12.4** `DiscreteData_t`, **12.10** `UserDefinedData_t`, **12.11** `Gravity_t` — all correct (Examples subsections count in the numbering).
+- FMM 8-row node template matches `GridLocation_t` exactly.
+- String-table convention: bare `"Null"`/`"UserDefined"` plus full enumerator names — confirmed in `GridLocationName` and `DataClassName`.
+- Every MLL function called in the examples exists with the signature used: `cg_sol_write`, `cg_sol_ptset_write`, `cg_discrete_write`, `cg_subreg_bcname_write`, `cg_array_write`, `cg_base_read`, `cg_goto`, `cg_gridlocation_write`.
+- All four parser functions exist: `cgi_read_sol`, `cgi_read_discrete`, `cgi_read_subregion`, `cgi_read_user_data`.
+- `CHECK_FILE_OPEN`, `cgi_check_mode`, `cgi_posit_id`, `cgi_new_node`, `cgi_get_nodes`, `cgi_delete_node` all exist.
+- Fortran binding convention `cg_..._write_f(arg, ier) BIND(C, NAME=...)` matches `cg_gridlocation_write_f`.
+- `cgnscheck` has no generic unknown-child-label warning, so the backward-compatibility claim holds.
+- `BCType_t` values (`BCWall`, `BCInflow`, `BCTunnelOutflow`) confirm prefixed enum values are conventional and appear on disk unchanged.
+
+### Build state
+
+`latexmk` exit 0, **52 pp.**, zero undefined references, **zero unused labels** (was 14 at the prior
+review), one 0.56 pt overfull box.
+
+---
+
 ## Disposition: NARROW, not withdraw
 
 Q2 is answered — the requirement is real, attributed, and evidenced by a harmful production
