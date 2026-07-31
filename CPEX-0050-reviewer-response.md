@@ -5,9 +5,11 @@
 > reset to 1. Build clean via `make`: **42 pp.**, no undefined references. Provenance **resolved** —
 > private email, real, evidenced by a production workaround. Disposition: **narrow, not withdraw.**
 > **Expanded** with `InterfaceContinuity_t` after the reviewer accepted it was worth recording, and
-> both enumerations moved to prefixed value names (on disk as well as in C, per `BCType_t`).
+> both enumerations use compound descriptive value names (`SharedDofs`, `ContinuousInterface`), and
+> `Null` is rejected on write rather than deleting the child.
 > Document and registry entry are **published** (`CPEX-0050` `main`, `cgns.github.io` `develop`);
-> 50 pp. The reply below is verified against the published PDF and ready to send.
+> 52 pp. Agenda item filed for the 2026-08-04 Steering Committee meeting, with one decision required.
+> The reply below is verified against the published PDF and ready to send.
 
 **Document under review**: `CPEX-0050-dof-storage.tex` — renamed from
 `CPEX-0050-solution-representation.tex`; builds `CPEX-0050-dof-storage.pdf`
@@ -602,20 +604,35 @@ to:
   than authoritative, so a clean result is not a guarantee.
 - It is meaningful only where duplication occurs, and vacuous rather than wrong elsewhere.
 
-The orthogonality is where it earns its place: `Independent` + `Continuous` is the CG-stored-per-element
-case, and it is the only combination in which welding duplicated DOFs is both safe and worth doing.
-`Shared` + `Discontinuous` is contradictory and is a `cgnscheck` error. There is also a new design
+The orthogonality is where it earns its place: `IndependentDofs` + `ContinuousInterface` is the
+CG-stored-per-element case, and the only combination in which welding duplicated DOFs is both safe and
+worth doing. `SharedDofs` + `DiscontinuousInterface` is contradictory and is a `cgnscheck` error. There is also a new design
 decision recording why this is a second node rather than additional values of the first: a writer
 usually knows its storage layout but may not be in a position to assert continuity, and one combined
 enumeration would force it to either overstate its knowledge or say nothing.
 
-One consequence you may want to weigh, since it touches the file format. Both enumerations now use
-prefixed value names — `DofStorageShared`, `DofStorageIndependent`, `InterfaceContinuous`,
-`InterfaceDiscontinuous` — in the C bindings and on disk alike, following `BCType_t`, where `BCWall`
-and `BCInflow` are prefixed precisely because the bare nouns are too generic. Bare `Continuous` or
-`Independent` in `cgnslib.h` seemed an avoidable hazard. This is a file-format choice rather than a
-cosmetic one, since CGNS stores the enumerator name itself, and it is free only until an
-implementation exists — which is why I would rather settle it now than after 5.0.
+A naming note, since it touches the file format and you may see the earlier form. I had initially
+given both enumerations type-stem prefixes — `DofStorageShared` and so on — reasoning that `BCType_t`
+set a precedent and that bare `Independent` or `Continuous` in `cgnslib.h` was an avoidable hazard.
+Checking `cgnslib.h` rather than trusting that recollection, both premises fail: no CGNS enumeration
+prefixes its values with its own type stem (none of the twenty-seven — `BCType_t` carries `BC`, a
+domain prefix, and its sibling `BCDataType_t` is bare), and the namespace concern is already answered
+by `CGNS_SCOPE_ENUMS`, which expands every value to `CG_*`. CGNS also already ships values as generic
+as `Linear`, `Constant` and `Ideal`. Where it does want a value to be unmistakable it uses a compound
+descriptive name — `CellCenter`, `TimeAccurate`, `NonDeformingGrid` — so the values are now
+`SharedDofs` / `IndependentDofs` and `ContinuousInterface` / `DiscontinuousInterface`. That last
+pattern also gives precedent for the mild repetition in `DofStorage = SharedDofs`.
+
+One related simplification you may appreciate as an implementer. An earlier draft had writing the
+`Null` value delete an existing child. No `cg_*_write` in the MLL behaves that way, and it turns out
+to be unnecessary: `cg_delete_node` already removes an optional child at the current position in
+modify mode. So writing `Null` is now simply rejected, exactly as `cgi_check_location` rejects
+`GridLocationNull` under `FlowSolution_t`, `DiscreteData_t` and `BC_t`. "Unspecified" is expressed by
+not writing the node, and no new convention is introduced.
+
+Both of these were on the meeting agenda as questions for the Committee until I checked them against
+the library; they are now recorded there as determinations with the evidence, which leaves one genuine
+decision for 0050 instead of four.
 
 **On the real need.** Your Tecplot observation is the most useful thing in your reply. That the same
 duplicate-geometry workaround is forced by a second, unrelated format — and that HO support there is
@@ -649,11 +666,16 @@ document, jointly with 0045, along with the reasoning.
 to element-local DOFs at `GridLocation_t = Vertex` with the shared-vertex grid retained; the
 finite-volume, HDG, FSI and conjugate-heat-transfer motivations are gone along with their examples;
 every ambiguity claim is removed, since you were right that `GridLocation_t` plus the SIDS `DataSize`
-rules already determine the layout in every legal encoding today; and `Independent` is identified as
-the only load-bearing value, with `Shared` retained for self-description alone. Twelve examples became
-six. The document then grew again to accommodate the second attribute, which I think is the right
-trade: what came out argued for breadth the proposal had disclaimed, whereas what went in is
-specification for a property nothing else records. Specific corrections from your comments: the HDG trace bullet no
+rules already determine the layout in every legal encoding today; and `IndependentDofs` is identified as
+the only load-bearing value, with `SharedDofs` retained for self-description alone. Twelve examples
+became seven. The document then grew again to accommodate the second attribute, which I think is the
+right trade: what came out argued for breadth the proposal had disclaimed, whereas what went in is
+specification for a property nothing else records. It also had a full accuracy pass against the
+CGNS 5.0 tree, which caught a handful of things worth mentioning to you as an implementer: a claim
+that this node's `Null` handling mirrored `GridLocation` (it does not — `cg_gridlocation_write` always
+writes its node), an example that could not compile because `CGIO_MAX_NAME_LENGTH` lives in a header
+`cgnslib.h` does not include, and the fact that 0045's Chapter 12 insertions move
+`UserDefinedData_t` to 12.12, which our SIDS citations now account for. Specific corrections from your comments: the HDG trace bullet no
 longer claims those DOFs are globally shared, the reference entity set is now stated in the normative
 definition rather than only in the 0045 interaction section, the weak-BC inference is deleted, the
 `CellCenter`/`InterpolationPoints` inconsistency between Design Decision 3 and §4.2 is reconciled, and
@@ -699,6 +721,27 @@ Verified against `/Users/brtnfld/packages/CGNS` (`CGNS_DOTVERS 5.00`, the 5.0 de
 - Fortran binding convention `cg_..._write_f(arg, ier) BIND(C, NAME=...)` matches `cg_gridlocation_write_f`.
 - `cgnscheck` has no generic unknown-child-label warning, so the backward-compatibility claim holds.
 - `BCType_t` values (`BCWall`, `BCInflow`, `BCTunnelOutflow`) confirm prefixed enum values are conventional and appear on disk unchanged.
+
+### Two findings superseded by later research (2026-07-31, same day)
+
+Findings 1 and 2 above were addressed by *adopting* a prefix and a `Null`-deletes-child rule. Both
+choices were then reversed after checking `cgnslib.h` and `cgnslib.c` directly rather than reasoning
+from convention:
+
+- **Value names.** No CGNS enumeration prefixes its values with its own type stem — 0 of 27.
+  `BCType_t` carries `BC`, a *domain* prefix, and sibling `BCDataType_t` is bare. The
+  namespace concern is already answered by `CGNS_SCOPE_ENUMS`, which expands every value to `CG_*`,
+  so a per-enumeration prefix duplicates an existing mechanism — and does so in the file format,
+  since the stored token follows the identifier. Adopted instead: compound descriptive names
+  (`SharedDofs`, `IndependentDofs`, `ContinuousInterface`, `DiscontinuousInterface`), following
+  `CellCenter` / `TimeAccurate` / `NonDeformingGrid`.
+- **`Null` on write.** `cg_delete_node` already removes an optional child at the current position in
+  `CG_MODE_MODIFY`, and neither new node is among those it refuses to remove. The delete-on-`Null`
+  rule was therefore an unnecessary new convention. Adopted instead: reject `Null` on write, as
+  `cgi_check_location` rejects `GridLocationNull`.
+
+Lesson for the next round: "follows existing practice" claims in this document have twice turned out
+to be false when checked. Verify against the source, not against recollection.
 
 ### Build state
 
