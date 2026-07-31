@@ -16,5 +16,6 @@
 *.synctex.gz
 *.pdf
 
-# Working notes and drafts: keep local, not in the repo
+# Working notes, correspondence drafts: keep local, not in the repo
 *.md
+*-email.txt
