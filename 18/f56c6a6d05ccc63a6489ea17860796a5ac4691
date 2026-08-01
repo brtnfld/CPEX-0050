@@ -1,0 +1,29 @@
+CPEX-0050-dof-storage.tex
+  s_5428cac5e39054::t_3b4d518a811cd7 717-723
+  s_5428cac5e39054::t_81afad2f28fd83 1486
+  s_5428cac5e39054::t_39eab6cdfada58 436-472
+  s_5428cac5e39054::t_4d6ca51c12b9bb 995-996,998-1006
+  s_5428cac5e39054::t_198d1660ac261e 2423-2447
+  s_5428cac5e39054::t_005464ea47c932 2479-2484
+  s_5428cac5e39054::t_e79fe528899849 513-523
+  s_5428cac5e39054::t_25a49466ddc9cf 650,652,657-661,664,667-683,686-687
+  s_5428cac5e39054::t_dd5a3ebcd83b9b 989-990
+  s_5428cac5e39054::t_b7d127e988feeb 413-415
+  s_5428cac5e39054::t_7deb21f486ade8 692-702
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "18f56c6a6d05ccc63a6489ea17860796a5ac4691",
+  "prompts": {},
+  "sessions": {
+    "s_5428cac5e39054": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed8dc27e-a7b2-49df-9d8e-680c0cbaccb2",
+        "model": "claude-opus-5"
+      },
+      "human_author": "M. Scot Breitenfeld <brtnfld@hdfgroup.org>"
+    }
+  }
+}
