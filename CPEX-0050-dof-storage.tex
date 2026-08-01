@@ -410,7 +410,9 @@ higher-order interpolation infrastructure.
   (Sections~\ref{sec:ptlist-restrictions} and~\ref{sec:hdiv-hcurl}).
 \end{itemize}
 
-\paragraph{An acknowledged redundancy.}  For discontinuous Galerkin data
+\paragraph{An acknowledged redundancy.}  This is the subject of the one
+open question put to the Steering Committee; see
+Section~\ref{sec:decision}.  For discontinuous Galerkin data
 with $p \leq 4$ on a Lagrange basis there will be two conforming ways to
 express the same field: the \texttt{Vertex} encoding defined here, and
 CPEX~0045's \texttt{InterpolationPoints}.  This is stated plainly
@@ -430,6 +432,43 @@ that implements only CPEX~0045 is never \emph{wrong}---it is simply
 unable to read files that chose the other encoding, and can say so
 precisely, because the \texttt{DofStorage} node makes that choice
 explicit rather than leaving it to be inferred.
+
+\subsection{Decision Required of the Steering Committee}
+\label{sec:decision}
+
+Everything else in this proposal is settled against the existing
+standard and the library source, and is presented as specification
+rather than as an open question.  One question remains that evidence
+cannot settle, because it concerns how the standard should be organised.
+
+\textbf{Should the \texttt{Vertex} encoding of
+Section~\ref{sec:shared-vertex-layout} live in this CPEX, or be folded
+into CPEX~0045?}
+
+Both encodings satisfy the requirement, and the grid is untouched either
+way.  What the \texttt{Vertex} encoding offers is a smaller reader-side
+burden where the DOF positions simply \emph{are} the mesh vertices: no
+\texttt{Family\_t}-level \texttt{SolutionInterpolation\_t} lookup, no
+basis evaluation, no control-point machinery.  For first-order DG that
+is the difference between reading one additional scalar node and
+implementing an interpolation framework, and it was third-party reader
+implementors, not solver authors, who asked for it.  The cost is the
+redundancy described above.
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Keep it here}, with CPEX~0045 recommended wherever
+  available.  The proposal as written takes this position.
+\item \textbf{Fold the ordering rule into CPEX~0045} as an alternative
+  encoding there.  One proposal, one place to look, at the cost of
+  enlarging CPEX~0045 late in its review and coupling two schedules that
+  are currently only aligned.
+\item \textbf{Decline the \texttt{Vertex} encoding} and require
+  CPEX~0045.  Removes the redundancy, and with it the low-cost path the
+  requesters asked for.
+\end{enumerate}
+
+Option~1 is recommended.  Whichever is chosen, the normative content of
+Section~\ref{sec:ordering-rule} is unchanged; only its home moves.
 
 \subsection{Prior Art: The DOF-Map Concept in ASCI-DMF / SAF}
 \label{sec:prior-art}
@@ -471,25 +510,17 @@ complementary layers of the same concept introduced in ASCI-DMF.
 \subsection{Naming History}
 \label{sec:naming-history}
 
-This proposal has not yet been presented, so the document carries no revision history.  It
-did, however, pass through two working names before this one, and both left traces that a
-reader may encounter---hence this note.
-
-An early draft used \texttt{SolutionRepresentation\_t}, which is where the former source
-filename \texttt{CPEX-0050-solution-representation.tex} came from.  A later draft used
-\texttt{SolutionContinuity\_t}, with values \texttt{Continuous} and
-\texttt{Discontinuous}, and it is under that name that the CPEX registry currently lists
-the entry (scope line ``Support Solution Continuity Type in CGNS,'' attachment
-\texttt{CPEX-0050-SolutionContinuity.pdf}).  That vocabulary proved misleading: readers
-consistently understood ``continuity'' as a claim about the mathematical smoothness of the
-field, which this node does not make.
-
-The name adopted here is \texttt{DofStorage\_t}, with values \texttt{SharedDofs} and
-\texttt{IndependentDofs}, chosen to state plainly that the node describes \emph{storage
-layout}.  The source document and its PDF are named to match
-(\texttt{CPEX-0050-dof-storage}).  \textbf{The registry entry requires a corresponding
-update} to its scope line and attachment.  No files have been written with either earlier
-name---there is no reference implementation yet---so no migration path is required.
+Two earlier working names left traces a reader may encounter.
+\texttt{SolutionRepresentation\_t} is the source of the former filename
+\texttt{CPEX-0050-solution-representation.tex}.
+\texttt{SolutionContinuity\_t} is the name under which the CPEX registry
+currently lists this entry (scope line ``Support Solution Continuity
+Type in CGNS,'' attachment \texttt{CPEX-0050-SolutionContinuity.pdf});
+it was abandoned because readers consistently took ``continuity'' as a
+claim about mathematical smoothness, which \texttt{DofStorage\_t} does
+not make.  \textbf{The registry entry requires a corresponding update}
+to its scope line and attachment.  No files have been written with
+either earlier name, so no migration path is required.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Detailed Description}
@@ -616,125 +647,59 @@ Supplying the orientation metadata that would make vector-conforming
 spaces safely self-describing is deliberately out of scope for this
 CPEX and is a natural subject for a future, narrowly scoped proposal.
 
-\subsubsection{Rationale for Two-Value Classification}
+\subsubsection{Classification Guidance}
 
-The two values are not of equal weight, and the proposal is clearer for
-saying so.
-
+The two values are not of equal weight.
 \texttt{IndependentDofs} is load-bearing: at
 \texttt{GridLocation\_t = Vertex} it admits a layout that has no other
 conforming encoding, and a reader must consult it to size and interpret
 the field correctly (Section~\ref{sec:shared-vertex-layout}).
-
-\texttt{SharedDofs} is confirmatory.  Wherever it is valid, the sharing it
-describes is already realized by the \texttt{Elements\_t} connectivity,
-so a reader that ignores the node reaches the same conclusion.  It is
-retained for three reasons: it makes the layout explicit rather than
-implied, so files are self-describing; it gives writers a way to state
-the layout positively instead of relying on the absence of
-\texttt{IndependentDofs}; and an enumeration offering only one substantive
-value would be an odd construct with no precedent in the SIDS.  It is
-\emph{not} retained on the basis that readers require it, and
-Section~\ref{sec:scope} should be read as limiting the claims made for
-it.  In particular, \texttt{SharedDofs} is meaningless at $p=0$ and invalid
-on a volume \texttt{InterpolationPoints} block
+\texttt{SharedDofs} is confirmatory---wherever it is valid, the sharing
+it describes is already realized by the \texttt{Elements\_t}
+connectivity---and is provided so that files are self-describing, not
+because readers require it.  It is meaningless at $p=0$ and invalid on a
+volume \texttt{InterpolationPoints} block
 (Section~\ref{sec:dofstorage-interp}).
 
-With that asymmetry stated, methods that appear to require finer
-distinctions are handled by the two values combined with standard
-CGNS patterns:
+Writers should classify as follows.
 
 \begin{description}[leftmargin=2em]
-\item[HDG and mixed-layout methods] use both element-local volume DOFs
-  and face-local trace DOFs.  Note that the trace space of the standard
-  hybridizable formulation is \emph{not} globally continuous: it
-  consists of face-wise polynomials with no continuity imposed between
-  adjacent faces, so trace DOFs are generally discontinuous along
-  skeleton edges and vertices.  \texttt{SharedDofs} on a trace block
-  therefore asserts only that the two volume elements adjacent to a
-  given face index the same DOF block for that face---the reference
-  entity set is the adjacent \emph{volume} elements, per
-  Section~\ref{sec:dofstorage-interp}---and asserts nothing about
-  continuity across the skeleton.  The two layouts are stored as
-  separate \texttt{FlowSolution\_t} nodes, following the same pattern
-  CGNS already uses to separate fields at different
-  \texttt{GridLocation\_t} values.  A dedicated \texttt{MixedStorage}
-  value would conflate two distinct data layouts into a single node,
-  making it harder, not easier, for post-processors to interpret the
-  data.
+\item[HDG and mixed-layout methods] store element-local volume DOFs and
+  face-local trace DOFs in \emph{separate} \texttt{FlowSolution\_t}
+  nodes, marked \texttt{IndependentDofs} and \texttt{SharedDofs}
+  respectively.  On a trace block, \texttt{SharedDofs} asserts only
+  that the two volume elements adjacent to a given face index the same
+  DOF block for that face; it asserts nothing about continuity across
+  the skeleton, which the standard hybridizable trace space does not
+  have.
 
-\item[Penalized / weakly-continuous DG methods] enforce continuity
-  through penalty terms in the variational formulation, but the data
-  layout remains element-local: each element owns its own DOFs.  The
-  correct label is \texttt{IndependentDofs}.  ``Weak continuity''
-  is a solver-internal property of the numerical method, not a property
-  of the stored data that readers and post-processors need to act on.
+\item[Penalized / weakly-continuous DG methods] use
+  \texttt{IndependentDofs}.  The data layout is element-local; ``weak
+  continuity'' is a property of the variational formulation, not of the
+  stored data.
 
-\item[Isogeometric analysis ($C^k$, $k \geq 1$)] uses basis functions
-  with higher-than-$C^0$ smoothness, but the data layout still
-  shares DOFs at patch interfaces.  The
-  correct label is \texttt{SharedDofs}.  The smoothness order
-  $k$ is a property of the basis, not of the data layout; it belongs in
-  the interpolation metadata (CPEX~0045), not in the DOF storage type.
+\item[Isogeometric analysis ($C^k$, $k \geq 1$)] uses
+  \texttt{SharedDofs}.  DOFs are shared at patch interfaces; the
+  smoothness order $k$ belongs in CPEX~0045's interpolation metadata.
 \end{description}
 
-The \texttt{DofStorageUserDefined} value remains available
-as an escape hatch, consistent with CGNS convention for all
-enumeration types.
-
-\textbf{Scope note.}  \texttt{DofStorage\_t} captures
-\emph{storage and DOF-sharing semantics} only---it answers
-``are interface DOFs shared or element-local?''  It does not
-encode the polynomial basis, smoothness order, patch topology,
-orientation conventions (Section~\ref{sec:hdiv-hcurl}), or
-support-radius metadata that isogeometric analysis (IGA), meshless, or other
-non-standard discretizations may additionally require.  Those
-richer descriptions belong in CPEX~0045, CPEX~0047,
-or in future extensions; this CPEX is intentionally
-scoped to the coarser, universally applicable
-shared/independent distinction.
+\texttt{DofStorageUserDefined} remains available as an escape hatch,
+consistent with CGNS convention for all enumeration types.
 
 \subsubsection{Enumeration Value Naming}
 \label{sec:value-naming}
 
-For every CGNS enumeration, the string written to the file is the
-enumerator's own name; only the \texttt{Null} and \texttt{UserDefined}
-members are stored in abbreviated form, as \texttt{"Null"} and
-\texttt{"UserDefined"} (cf.\ \texttt{GridLocationNull} stored as
-\texttt{"Null"}, while \texttt{Vertex} is stored as \texttt{"Vertex"}).
-The choice of identifier is therefore also a choice of file-format
-token.
+For every CGNS enumeration the string written to the file is the
+enumerator's own name, so the choice of identifier is also a choice of
+file-format token.  Only \texttt{Null} and \texttt{UserDefined} are
+stored abbreviated, as \texttt{"Null"} and \texttt{"UserDefined"}.
 
-Two properties of the existing naming practice govern the choice here,
-and both were checked against \texttt{cgnslib.h} rather than assumed.
-
-\textbf{No CGNS enumeration prefixes its values with its own type
-stem}---none of the twenty-seven enumerations in \texttt{cgnslib.h} does
-so.  \texttt{BCType\_t} is sometimes cited as a counter-example, but its
-values carry \texttt{BC}, a \emph{domain} prefix shared across the
-boundary-condition vocabulary, not the type name \texttt{BCType}; and
-\texttt{BCDataType\_t} in the same family is unprefixed
-(\texttt{Dirichlet}, \texttt{Neumann}).  A value named
-\texttt{DofStorageShared} would therefore be the first of its kind, and
-would read as a departure rather than as conformity.
-
-\textbf{The global-namespace concern is already addressed by the
-library.}  Defining \texttt{CGNS\_SCOPE\_ENUMS} makes
-\texttt{CGNS\_ENUMV(e)} expand to \texttt{CG\_e} for every enumeration
-value in the header.  An application that cannot tolerate short
-identifiers in the global namespace has a standard, uniform remedy that
-applies to all of CGNS, so encoding a prefix into two individual
-enumerations---and, because the stored token follows the identifier, into
-the file format---would duplicate an existing mechanism.  Consistently
-with that, CGNS already ships values as generic as \texttt{Linear},
-\texttt{Constant}, \texttt{Generic}, \texttt{Ideal} and
-\texttt{Structured}.
-
-Where CGNS does want a value to be unmistakable, it uses a
-\emph{compound descriptive} name rather than a prefix:
-\texttt{CellCenter}, \texttt{FaceCenter}, \texttt{TimeAccurate},
-\texttt{ConstantRate}, \texttt{NonDeformingGrid}.  The values adopted
-here follow that pattern:
+Where CGNS wants a value to be unmistakable it uses a \emph{compound
+descriptive} name rather than a type-stem prefix: \texttt{CellCenter},
+\texttt{FaceCenter}, \texttt{TimeAccurate}, \texttt{ConstantRate},
+\texttt{NonDeformingGrid}.  No CGNS enumeration prefixes its values
+with its own type stem.  The values adopted here follow the compound
+pattern:
 
 \begin{center}
 \begin{tabular}{ll}
@@ -749,18 +714,13 @@ here follow that pattern:
 \end{tabular}
 \end{center}
 
-\noindent Each is specific enough that the collision question does not
-arise, none carries a type-stem prefix, and none collides with any
-identifier in \texttt{cgnslib.h} today.  The mild repetition in
-\texttt{DofStorage = SharedDofs} has direct precedent in
-\texttt{ArbitraryGridMotionType\_t}, whose values are
-\texttt{NonDeformingGrid} and \texttt{DeformingGrid}.
-
-As always, the \texttt{Null} and \texttt{UserDefined} members do carry
-the type-stem prefix in the C bindings---\texttt{DofStorageNull},
-\texttt{InterfaceContinuityUserDefined}---because that is the convention
-for those two members specifically, and they are stored as \texttt{"Null"}
-and \texttt{"UserDefined"} regardless.
+\noindent None collides with any identifier in \texttt{cgnslib.h}.  The
+mild repetition in \texttt{DofStorage = SharedDofs} has direct precedent
+in \texttt{ArbitraryGridMotionType\_t}, whose values are
+\texttt{NonDeformingGrid} and \texttt{DeformingGrid}.  The
+\texttt{Null} and \texttt{UserDefined} members do carry the type-stem
+prefix in the C bindings, per the convention for those two members
+specifically.
 
 \subsection{New Enumeration: \texttt{InterfaceContinuity\_t}}
 \label{sec:continuity}
@@ -1026,82 +986,24 @@ than, for example, \texttt{Zone\_t}) because:
   higher-order solutions when the distinction applies at any order.
 \end{itemize}
 
-\subsubsection{Why a New Node Rather Than a New \texttt{GridLocation\_t} Value}
-\label{sec:why-new-node}
-
-The most obvious alternative is to add a \texttt{GridLocation\_t}
-value---say \texttt{ElementVertex}---meaning ``at element-local copies
-of the vertices.''  This proposal rejects that approach:
-
-\begin{itemize}[leftmargin=2em]
-\item \textbf{It conflates two orthogonal axes.}  \texttt{GridLocation\_t}
-  answers \emph{where}; DOF storage answers \emph{how many copies}.  Each
-  of the seven existing spatial locations can in principle carry either
-  layout, so folding the second axis into the first would require
-  roughly doubling the enumeration (\texttt{ElementVertex},
-  \texttt{ElementEdgeCenter}, \texttt{ElementFaceCenter}, \dots) rather
-  than adding one value.
-
-\item \textbf{It would not be backward compatible in practice.}
-  \texttt{GridLocation\_t} is consumed by essentially every CGNS reader,
-  and each has a switch over its values.  A new value causes existing
-  readers to fail or fall through to a default, whereas an unknown
-  \emph{child node} is silently ignored by both the MLL and
-  \texttt{cgnscheck} (Section~\ref{sec:compat}).
-
-\item \textbf{The distinction is not always locational.}  For
-  \texttt{CellCenter} data the layout is independent with no
-  corresponding ``element-local'' location to name; the flag still
-  carries useful information for coupling frameworks.
-
-\item \textbf{Precedent.}  CGNS already separates orthogonal per-solution
-  properties into sibling child nodes (\texttt{GridLocation},
-  \texttt{Rind}, \texttt{DataClass}, \texttt{DimensionalUnits}) rather
-  than encoding them in a single enumeration.
-\end{itemize}
-
-Note that CPEX~0045 and CPEX~0047 do each add a
-\texttt{GridLocation\_t} value (\texttt{InterpolationPoints} and
-\texttt{IntegrationPoint}); those additions describe genuinely new
-\emph{locations}, which is the correct use of that enumeration.
+Design Decision~\ref{dd:why-new-node} records why a new node type was
+preferred to a new \texttt{GridLocation\_t} value.
 
 \subsection{New MLL Functions}
 \label{sec:mll}
 
-\subsubsection{Design: Position-Based API}
-
-The API follows the pattern CGNS uses for every other optional scalar
-metadata child---\texttt{GridLocation}, \texttt{DataClass},
-\texttt{Rind}, \texttt{DimensionalUnits}, \texttt{Descriptor}: a single
-function pair that operates on the node at the current position, set by
+Each attribute is read and written by one position-based function pair
+operating on the node at the current position, as set by
 \texttt{cg\_goto}, backed by an internal
-\texttt{cgi\_\textit{x}\_address()} helper that resolves the current
-position to the relevant struct field and enumerates the legal parent
-labels.
-
-This is preferred over a family of explicit-index functions --- one per
-parent node type, in the style of
-
-\begin{quote}
-\texttt{cg\_sol\_dof\_storage\_write(fn,B,Z,S,type)} \\
-\texttt{cg\_discrete\_dof\_storage\_write(fn,B,Z,D,type)} \\
-\texttt{cg\_subreg\_dof\_storage\_write(fn,B,Z,SR,type)}
-\end{quote}
-
-\noindent plus matching readers and Fortran bindings --- because:
-
-\begin{itemize}[leftmargin=2em]
-\item Two C functions and two Fortran functions cover all four parent
-  node types, instead of six and six.
-\item Adding a fifth permitted parent later requires one line in the
-  address helper, not two new public functions plus Fortran bindings.
-\item The address helper locates an existing child \emph{by label}
-  (Section~\ref{sec:address}), so no node identifier needs to be cached
-  in the internal structures.  This removes a field from three structs
-  and eliminates a class of overwrite bug.
-\item It matches what users already do for the sibling property:
-  \texttt{cg\_goto(...); cg\_gridlocation\_write(CellCenter);}
-\end{itemize}
+\texttt{cgi\_\textit{x}\_address()} helper that resolves that position
+to the relevant struct field and enumerates the legal parent labels.
+This is the pattern CGNS already uses for every other optional scalar
+metadata child---\texttt{GridLocation}, \texttt{DataClass},
+\texttt{Rind}, \texttt{DimensionalUnits}, \texttt{Descriptor}---so
+usage matches the sibling property exactly:
+\texttt{cg\_goto(...); cg\_gridlocation\_write(CellCenter);}
+Design Decision~\ref{dd:api} records why this was preferred to a family
+of per-parent, explicit-index functions.
 
 \subsubsection{C API}
 
@@ -1581,11 +1483,7 @@ a substantial improvement.
 Where CPEX~0045 or CPEX~0047 has been adopted and the DOF positions are
 not the mesh vertices, \texttt{InterpolationPoints} or
 \texttt{IntegrationPoint} remains the preferred encoding: both size the
-array from per-element DOF counts with no redundant index list.  It
-should also be acknowledged that community feedback has objected to
-\emph{existing} cases where an identity point set must be written
-purely as indirection; the redundancy here is a real cost to weigh, not
-a formality.
+array from per-element DOF counts with no redundant index list.
 
 \subsubsection{Other Grid Locations}
 
@@ -2522,17 +2420,31 @@ existing CGNS conventions and SIDS precedent.
   application-level tools such as \texttt{cgnscheck}
   (Section~\ref{sec:cgnscheck}).
 
-\item \textbf{Position-based API rather than per-parent functions.}
-  See Section~\ref{sec:mll} for the full rationale.  The decisive
-  consideration is that the address-helper pattern used by every other
-  optional scalar metadata child already solves parent dispatch,
-  modify-mode overwrite, and absent-node reads, so reimplementing
-  those three behaviors six times would add code without adding
-  capability.
+\item \label{dd:api} \textbf{Position-based API rather than per-parent
+  functions.}  The address-helper pattern used by every other optional
+  scalar metadata child already solves parent dispatch, modify-mode
+  overwrite, and absent-node reads, so reimplementing those three
+  behaviors once per parent would add code without adding capability.
+  Two C functions and two Fortran bindings cover all four parents
+  instead of six and six, and admitting a fifth parent later is one line
+  in the address helper rather than four new public entry points.
 
-\item \textbf{A new node type rather than a new
-  \texttt{GridLocation\_t} value.}  See
-  Section~\ref{sec:why-new-node}.
+\item \label{dd:why-new-node} \textbf{A new node type rather than a new
+  \texttt{GridLocation\_t} value.}  Adding a value such as
+  \texttt{ElementVertex} would conflate two orthogonal axes:
+  \texttt{GridLocation\_t} answers \emph{where}, DOF storage answers
+  \emph{how many copies}.  Because each existing spatial location can in
+  principle carry either layout, folding the second axis into the first
+  would eventually double the enumeration rather than add one value.  It
+  would also be worse for compatibility---every CGNS reader switches on
+  \texttt{GridLocation\_t}, whereas an unknown child node is silently
+  ignored by both the MLL and \texttt{cgnscheck}
+  (Section~\ref{sec:compat}).  CGNS already separates orthogonal
+  per-solution properties into sibling child nodes
+  (\texttt{GridLocation}, \texttt{Rind}, \texttt{DataClass},
+  \texttt{DimensionalUnits}).  Note that CPEX~0045 and CPEX~0047 each
+  \emph{do} add a \texttt{GridLocation\_t} value; those describe
+  genuinely new locations, which is the correct use of that enumeration.
 
 \item \textbf{Two separate attributes rather than one combined
   enumeration.}  A single enumeration could in principle enumerate the
@@ -2564,9 +2476,12 @@ existing CGNS conventions and SIDS precedent.
   \texttt{UserDefined} escape hatch, and CGNS has no precedent for
   boolean-valued metadata nodes.
 
-\item[A third \texttt{MixedStorage} value.]  Rejected; see the
-  Rationale for Two-Value Classification.  Mixed-layout methods store
-  distinguishable data and should store it in distinguishable nodes.
+\item[A third \texttt{MixedStorage} value.]  Rejected.  It would
+  conflate two distinct layouts in one node, making post-processing
+  harder rather than easier.  Mixed-layout methods store
+  distinguishable data and should store it in distinguishable nodes,
+  exactly as they would for fields at different
+  \texttt{GridLocation\_t} values.
 
 \item[Encoding the layout in \texttt{UserDefinedData\_t}.]  Rejected as
   the primary mechanism.  It requires every reader to agree on a name
