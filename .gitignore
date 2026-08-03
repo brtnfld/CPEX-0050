@@ -1,9 +1,13 @@
-# Track only the LaTeX source. Everything else stays local: build
-# artifacts (PDF, .aux, .log, .toc, ...), working notes, correspondence
-# drafts, editor and tooling config, the Makefile, and the title-page logo.
+# Track the LaTeX source and the assets it needs to build. Everything else
+# stays local: build artifacts (PDF, .aux, .log, .toc, ...), working notes,
+# correspondence drafts, editor and tooling config, and the Makefile.
+#
+# CGNS_logo_1.png is \includegraphics'd on the title page, so it must be
+# tracked for a fresh clone to build.
 #
 # Note: this ignores subdirectories wholesale, so a .tex file added under
 # one would need an explicit exception here.
 *
 !/.gitignore
 !*.tex
+!/CGNS_logo_1.png
