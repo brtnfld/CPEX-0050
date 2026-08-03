@@ -1,0 +1,32 @@
+CPEX-0050-dof-storage.tex
+  s_7ec0f18b1d2ca0::t_c16aeb76e51ad5 902-907
+  s_7ec0f18b1d2ca0::t_a2a1ac41d23116 866,872-880
+  s_7ec0f18b1d2ca0::t_8667f92870bafe 861
+  s_7ec0f18b1d2ca0::t_d134861f3b2fbd 650
+  s_7ec0f18b1d2ca0::t_485aaf05710cf9 1639-1642
+  s_7ec0f18b1d2ca0::t_5694887c7814d8 1626-1634,1643
+  s_7ec0f18b1d2ca0::t_c4f0839d4fd763 1649-1666
+  s_7ec0f18b1d2ca0::t_3236777b775390 2006-2009
+  s_7ec0f18b1d2ca0::t_292ae3d03dc3b2 2635-2643
+  s_7ec0f18b1d2ca0::t_84b9ec02d50743 646-649,651-666,670-673
+  s_7ec0f18b1d2ca0::t_b464a3e445af88 896-901
+  s_7ec0f18b1d2ca0::t_153664d49ed549 842-852
+  s_7ec0f18b1d2ca0::t_3ba70ac269a18a 1745-1753,1756,1762-1767
+  s_7ec0f18b1d2ca0::t_0dca3ccaac2178 2647-2653
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "6d2b4db45885ba8d6a1f16e518efb9fd3324c8cb",
+  "prompts": {},
+  "sessions": {
+    "s_7ec0f18b1d2ca0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27094fee-cf70-4a62-b92c-b7674cad0c46",
+        "model": "claude-opus-5"
+      },
+      "human_author": "M. Scot Breitenfeld <brtnfld@hdfgroup.org>"
+    }
+  }
+}
