@@ -643,9 +643,34 @@ Accordingly:
   incorrect results.
 \end{itemize}
 
+It is tempting to reach instead for \texttt{SharedDofs} +
+\texttt{DiscontinuousInterface}, reading the pair as ``one stored value
+per interface entity, but a vector field that is not continuous across
+that interface.''  As a description of $\boldsymbol{H}(\operatorname{div})$
+or $\boldsymbol{H}(\operatorname{curl})$ data that reading is apt, but it
+is not the one \texttt{InterfaceContinuity\_t} carries: that attribute
+compares \emph{duplicated stored values} for numerical agreement
+(Section~\ref{sec:continuity-scope}), and under \texttt{SharedDofs}
+nothing is duplicated, so the pair is rejected as contradictory
+(Section~\ref{sec:continuity}).  Admitting it would also not be
+sufficient: a reader learning only ``not fully continuous'' still cannot
+act, because it does not know which component the shared DOF constrains
+or the sign convention relating the two adjacent elements.  The label
+would advertise a self-describing file that is not one, which is the
+failure mode this section exists to prevent.  Of the two routes above,
+therefore, a writer taking the first---\texttt{DofStorageUserDefined}
+with a \texttt{DofStorageDescription}---never encounters that cell at
+all, and a writer keeping \texttt{SharedDofs} should leave
+\texttt{InterfaceContinuity} unset and identify the space in the
+accompanying \texttt{Descriptor\_t}.
+
 Supplying the orientation metadata that would make vector-conforming
 spaces safely self-describing is deliberately out of scope for this
 CPEX and is a natural subject for a future, narrowly scoped proposal.
+Such a proposal is also the right place to introduce a positive encoding
+for conformity of a vector space, rather than overloading a cell of this
+one---which would fix that meaning permanently, on the strength of a
+reading that cannot yet be acted upon.
 
 \subsubsection{Classification Guidance}
 
@@ -814,9 +839,17 @@ The two attributes are orthogonal, and each combination has a meaning:
 the connectivity itself, so the annotation adds nothing derivable.  It is
 permitted for uniformity.}
 
-\noindent{\small $^{\ddagger}$~Contradictory: a single shared slot cannot
-hold two differing values.  \texttt{cgnscheck} should report an error
-(Section~\ref{sec:cgnscheck}).}
+\noindent{\small $^{\ddagger}$~Contradictory: under \texttt{SharedDofs}
+no interface DOF is duplicated, so there are no differing copies for
+\texttt{DiscontinuousInterface} to assert.  The asymmetry with the
+$\dagger$~cell is deliberate---there
+\texttt{ContinuousInterface} is trivially true and merely redundant,
+whereas \texttt{DiscontinuousInterface} asserts something the storage
+contradicts.  \texttt{cgnscheck} should report an error
+(Section~\ref{sec:cgnscheck}).  This cell is \emph{not} the encoding for
+a vector-conforming space whose single shared normal or tangential DOF
+leaves the full vector field discontinuous across the interface; see
+Section~\ref{sec:hdiv-hcurl}.}
 
 The load-bearing cell is \texttt{IndependentDofs} + \texttt{ContinuousInterface}: a
 continuous field stored redundantly, which is exactly the CG
@@ -825,17 +858,26 @@ It is also the combination a reader most benefits from knowing, since it
 is the only one in which welding is both safe and profitable.
 
 \subsubsection{Scope of the Assertion}
+\label{sec:continuity-scope}
 
 Three limits are deliberate, and stating them is what keeps this
 attribute narrow enough to be useful.
 
-\textbf{It records agreement, not smoothness order.}
+\textbf{It records agreement of stored values, not smoothness order.}
 \texttt{ContinuousInterface} asserts that duplicated DOFs coincide,
 which for a nodal basis means the field is at least $C^0$ across the
 interface.  It does not encode the smoothness order of the underlying
 basis: $C^k$ for $k \geq 1$, as in isogeometric analysis, is a property
 of the basis and belongs in CPEX~0045's interpolation metadata, exactly
-as Section~\ref{sec:scope} states for the storage attribute.
+as Section~\ref{sec:scope} states for the storage attribute.  Nor is it
+a general statement about the continuity of the function space: the
+question it answers is the narrow, numerical one of whether two stored
+copies of one DOF hold the same number, because that is the question a
+post-processor must answer before welding them.  A space can satisfy
+\texttt{ContinuousInterface} and still be discontinuous in some other
+component or derivative, and a space with no duplicated storage at all
+can be discontinuous without this attribute having anything to say
+(Section~\ref{sec:hdiv-hcurl}).
 
 \textbf{It is a writer's assertion, and the library does not verify it.}
 The MLL shall not compare values on write; doing so would require
@@ -851,9 +893,18 @@ under \texttt{IndependentDofs}, under
 \texttt{GridLocation\_t = InterpolationPoints} and
 \texttt{IntegrationPoint}, and under the \texttt{Vertex} plus
 \texttt{PointList} encoding of
-Section~\ref{sec:shared-vertex-layout}.  Where no duplication occurs---a
-\texttt{CellCenter} solution, or genuinely shared vertex storage---the
-attribute is vacuous rather than wrong, and writers may omit it.
+Section~\ref{sec:shared-vertex-layout}.  Where no duplication
+occurs---a \texttt{CellCenter} solution, or genuinely shared vertex
+storage---writers should omit it.  The two values are not equally
+harmless there: \texttt{ContinuousInterface} is vacuous rather than
+wrong, since it is trivially satisfied by an empty set of duplicates,
+whereas \texttt{DiscontinuousInterface} asserts differing copies that do
+not exist.  Where the node also carries \texttt{SharedDofs} the two
+assertions contradict each other outright and \texttt{cgnscheck} should
+report an error; elsewhere---a \texttt{CellCenter} solution, say---the
+value is merely unsupportable and draws a warning, matching the severity
+this document gives the analogous \texttt{SharedDofs} misuse
+(Section~\ref{sec:cgnscheck}).
 
 \subsection{SIDS Node Definition}
 \label{sec:sids-node}
@@ -1572,23 +1623,47 @@ of this pattern.
 \subsection{Interaction with \texttt{Rind\_t} (Ghost Layers)}
 \label{sec:rind-interaction}
 
-When no point set is present, \texttt{DofStorage\_t} applies uniformly
+\texttt{Rind\_t} remains usable with both \texttt{DofStorage\_t} values,
+with one exception: as stated in
+Section~\ref{sec:ptlist-restrictions}, it must not be combined with the
+\texttt{Vertex} + \texttt{IndependentDofs} + \texttt{PointList} encoding
+of Section~\ref{sec:shared-vertex-layout}, because the SIDS defines no
+position for rind entries within a point set.  The rest of this section
+therefore concerns solution nodes carrying no point set.
+
+Where no point set is present, \texttt{DofStorage\_t} applies uniformly
 to the entire solution field, including any rind (ghost) entries
 declared by \texttt{Rind\_t}.  An \texttt{IndependentDofs} label means that
 all data entries---interior and rind alike---are element-local: each
 rind entry belongs to one element and must not be interpreted as a
-shared vertex value.  DG solvers that use ghost layers for MPI halo
-exchange may therefore store element-local rind DOFs in the standard
-way; the \texttt{IndependentDofs} label covers them.  Rind
+shared vertex value.  DG and finite-volume solvers that use ghost layers
+for MPI halo exchange may therefore store element-local rind DOFs in the
+standard way at the cell- and face-centred grid locations, where the rind
+extent counts entities and each entity carries one DOF; the
+\texttt{IndependentDofs} label covers them.  Rind
 entries of a \texttt{SharedDofs} solution retain their usual
 shared-DOF semantics.  No special treatment of the rind is required
 beyond what \texttt{Rind\_t} already specifies; the DOF storage label
 is consistent across the full data array.
 
-As stated in Section~\ref{sec:ptlist-restrictions}, \texttt{Rind\_t}
-must not be combined with the \texttt{Vertex} + \texttt{IndependentDofs} +
-\texttt{PointList} encoding, because the SIDS defines no position for
-rind entries within a point set.
+Two grid locations are deliberately absent from that statement.
+\texttt{Vertex} under \texttt{IndependentDofs} is unavailable in both
+directions: without a point set the combination is already invalid on
+sizing grounds (Section~\ref{sec:shared-vertex-layout}), and with one it
+excludes \texttt{Rind\_t} by the restriction above.  A solver needing
+both explicit element-local vertex DOFs and a declared ghost extent has
+no encoding in this CPEX, and should exchange its halo outside the file
+rather than declare it.
+
+\texttt{InterpolationPoints} and \texttt{IntegrationPoint} are absent for
+a different reason.  At both, the solution array is a concatenation of
+per-element DOF blocks, so the unit of the rind extent---elements or
+DOFs---is not fixed by CPEX~0045, by CPEX~0047, or by the SIDS.  This
+proposal does not resolve that: the ambiguity belongs to the host
+encoding rather than to the storage label, and settling it is properly
+the business of whichever of those two proposals owns the grid location.
+Writers should be aware that \texttt{Rind\_t} is not portable at those
+locations until one of them does so.
 
 %% ═════════════════════════════════════════════════════════════════════════
 \section{Interaction with CPEX 0045 (Higher-Order Elements)}
@@ -1667,15 +1742,29 @@ InterpolationPoints}:
   \texttt{FlowSolution\_t}.
 \item Use this CPEX to set \texttt{DofStorage\_t} on the
   \texttt{FlowSolution\_t} node.
+\item Also set \texttt{InterfaceContinuity\_t} on that node.  This step
+  matters most at precisely this grid location: the array is a
+  concatenation of per-element DOF blocks, so every interface DOF is
+  duplicated and the attribute is never vacuous here
+  (Section~\ref{sec:continuity-scope}).  A continuous spectral-element
+  field and a DG field remain indistinguishable without it no matter how
+  completely steps~1 and~2 are carried out---same basis, same order,
+  same array length (Example~\ref{ex:continuous-independent}).  A writer
+  that does not know shall omit it rather than guess.
 \end{enumerate}
 
-Example~\ref{ex:dg-write} shows both steps.
+Example~\ref{ex:dg-write} shows all three steps.
 
 For lower-order solutions using \texttt{GridLocation\_t = Vertex} or
 \texttt{CellCenter}, this CPEX can be used independently of CPEX~0045;
 see Example~\ref{ex:cg-write}.
 See Section~\ref{sec:shared-vertex-layout} for the prescribed data
-layout when independent DOFs coincide with shared mesh vertices.
+layout when independent DOFs coincide with shared mesh vertices.  There,
+\texttt{InterfaceContinuity\_t} is worth setting under the
+\texttt{Vertex} + \texttt{IndependentDofs} + \texttt{PointList} encoding,
+which duplicates DOFs in the same way; at \texttt{CellCenter}, or at
+\texttt{Vertex} with genuinely shared storage, it should be omitted
+(Section~\ref{sec:continuity-scope}).
 
 \subsection{\texttt{DofStorage\_t} Under \texttt{InterpolationPoints}}
 \label{sec:dofstorage-interp}
@@ -1913,6 +2002,10 @@ cg_sol_interpolation_order_write(fn, B, Z, S, 3, 0);
 /* Mark DOFs as element-local */
 cg_goto(fn, B, "Zone_t", Z, "FlowSolution_t", S, "end");
 cg_dof_storage_write(CGNS_ENUMV(IndependentDofs));
+
+/* Duplicated interface DOFs carry meaningful jumps: this is DG,
+ * not a continuous field stored per element (cf. Example 7). */
+cg_interface_continuity_write(CGNS_ENUMV(DiscontinuousInterface));
 
 /* Write element-local DOFs */
 cg_field_write(fn, B, Z, S, CGNS_ENUMV(RealDouble),
@@ -2539,14 +2632,25 @@ a file; the corresponding check is on the string.
   degradation as above.
 
 \item[Error:] \texttt{SharedDofs} together with
-  \texttt{DiscontinuousInterface} --- contradictory,
-  since a single shared storage slot cannot hold two differing values
-  (Section~\ref{sec:continuity}).
+  \texttt{DiscontinuousInterface} --- contradictory, since no interface
+  DOF is duplicated under \texttt{SharedDofs} and a single shared storage
+  slot cannot hold two differing values
+  (Section~\ref{sec:continuity}).  The diagnostic should name
+  Section~\ref{sec:hdiv-hcurl} as well: a writer of
+  $\boldsymbol{H}(\operatorname{div})$ or
+  $\boldsymbol{H}(\operatorname{curl})$ data is the likeliest author of
+  this combination, and needs to be told what to write instead rather
+  than only that this is wrong.
 
 \item[Warning:] \texttt{InterfaceContinuity} present on a node where no
   DOF duplication can occur---\texttt{GridLocation\_t = CellCenter}, or
-  \texttt{Vertex} with no \texttt{PointList}---where the assertion is
-  vacuous rather than wrong (Section~\ref{sec:continuity}).
+  \texttt{Vertex} with no \texttt{PointList}
+  (Section~\ref{sec:continuity-scope}).  For
+  \texttt{ContinuousInterface} the assertion is vacuous rather than
+  wrong.  For \texttt{Discontinuous\-Interface} it is unsupportable,
+  there being no differing copies to describe; that case escalates to the
+  error above when the same node also carries \texttt{SharedDofs}, which
+  contradicts it directly rather than merely failing to support it.
 
 \item[Warning, optional and off by default:] where the field arrays and
   the DOF correspondence are both available, \texttt{cgnscheck} may
