@@ -1,21 +1,9 @@
-
-#Ignore vscode AI rules
-.github/instructions/codacy.instructions.md
-
-# LaTeX build artifacts
-*.aux
-*.fdb_latexmk
-*.fls
-*.log
-*.out
-*.toc
-*.lof
-*.lot
-*.bbl
-*.blg
-*.synctex.gz
-*.pdf
-
-# Working notes, correspondence drafts: keep local, not in the repo
-*.md
-*-email.txt
+# Track only the LaTeX source. Everything else stays local: build
+# artifacts (PDF, .aux, .log, .toc, ...), working notes, correspondence
+# drafts, editor and tooling config, the Makefile, and the title-page logo.
+#
+# Note: this ignores subdirectories wholesale, so a .tex file added under
+# one would need an explicit exception here.
+*
+!/.gitignore
+!*.tex
