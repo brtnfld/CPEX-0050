@@ -106,7 +106,7 @@
   {\Large\color{cgnsteal} DOF Storage and Interface Continuity}\\[0.4em]
   {\color{cgnsgold}\rule{0.4\textwidth}{0.8pt}}\\[0.6em]
   {\large Version 1}\\[0.6em]
-  August 1, 2026
+  August 4, 2026
 \end{center}
 
 \vspace{1em}
@@ -128,14 +128,14 @@ Reference Impl.  & pending (see Section~\ref{sec:refimpl}) \\
 Target Release   & CGNS 5.0, jointly with CPEX~0045
                    (see Section~\ref{sec:refimpl}) \\
 Date First Posted & April 21, 2026 \\
-Date of Last Revision & August 1, 2026 \\
+Date of Last Revision & August 4, 2026 \\
 Prior Registry Entry & Listed while in draft as ``Support Solution
                    Continuity Type in CGNS''
                    (\texttt{CPEX-0050-SolutionContinuity.pdf});
                    see Section~\ref{sec:naming-history} \\
-SIDS Status      & proposal under review \\
-Filemap Status   & proposal under review \\
-MLL Status       & proposal under review \\
+SIDS Status      & accepted; awaiting implementation (adopted 2026-08-04) \\
+Filemap Status   & accepted; awaiting implementation (adopted 2026-08-04) \\
+MLL Status       & accepted; awaiting implementation (adopted 2026-08-04) \\
 \bottomrule
 \end{tabular}
 
@@ -410,8 +410,8 @@ higher-order interpolation infrastructure.
   (Sections~\ref{sec:ptlist-restrictions} and~\ref{sec:hdiv-hcurl}).
 \end{itemize}
 
-\paragraph{An acknowledged redundancy.}  This is the subject of the one
-open question put to the Steering Committee; see
+\paragraph{An acknowledged redundancy.}  This was the subject of the one
+question put to the Steering Committee, decided 2026-08-04; see
 Section~\ref{sec:decision}.  For discontinuous Galerkin data
 with $p \leq 4$ on a Lagrange basis there will be two conforming ways to
 express the same field: the \texttt{Vertex} encoding defined here, and
@@ -433,13 +433,14 @@ unable to read files that chose the other encoding, and can say so
 precisely, because the \texttt{DofStorage} node makes that choice
 explicit rather than leaving it to be inferred.
 
-\subsection{Decision Required of the Steering Committee}
+\subsection{Decision by the Steering Committee}
 \label{sec:decision}
 
-Everything else in this proposal is settled against the existing
+Everything else in this proposal was settled against the existing
 standard and the library source, and is presented as specification
-rather than as an open question.  One question remains that evidence
-cannot settle, because it concerns how the standard should be organised.
+rather than as a question.  One question could not be settled by
+evidence, because it concerned how the standard should be organised;
+it was put to the Committee.
 
 \textbf{Should the \texttt{Vertex} encoding of
 Section~\ref{sec:shared-vertex-layout} live in this CPEX, or be folded
@@ -467,8 +468,13 @@ redundancy described above.
   requesters asked for.
 \end{enumerate}
 
-Option~1 is recommended.  Whichever is chosen, the normative content of
-Section~\ref{sec:ordering-rule} is unchanged; only its home moves.
+\textbf{Decided (2026-08-04 Steering Committee meeting): Option~1.} The
+\texttt{Vertex} encoding stays in CPEX-0050, with CPEX-0045 recommended
+wherever available. The normative content of
+Section~\ref{sec:ordering-rule} is exactly as specified below; the
+question was only ever which document it lives in. CPEX-0050 was
+adopted the same day for SIDS, Filemap and MLL, with the reference
+implementation of Section~\ref{sec:refimpl} still pending.
 
 \subsection{Prior Art: The DOF-Map Concept in ASCI-DMF / SAF}
 \label{sec:prior-art}
